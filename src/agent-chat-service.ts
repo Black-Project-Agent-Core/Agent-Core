@@ -356,7 +356,8 @@ export class AgentChatService {
     }
     if (event.type !== 'context.usage' || typeof event.contextTokens !== 'number') return;
     this.store.recordContextUsage(turnId, event.contextTokens, event.contextWindow,
-      { iteration: event.iteration, maxIterations: event.maxIterations }, event.contextBreakdown);
+      { iteration: event.iteration, maxIterations: event.maxIterations }, event.contextBreakdown,
+      { cacheReadTokens: event.cacheReadTokens, cacheWriteTokens: event.cacheWriteTokens }, event.estimated === true);
   }
   /** Persists tool steps (Input/Output) and assistant narration for any turn; ancillary, so a write failure is logged briefly and never fails the turn. */
   private recordStep(turnId: string, event: AgentTurnEvent): void {

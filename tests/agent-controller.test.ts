@@ -318,6 +318,28 @@ describe('native Agent Core controller lifecycle', () => {
     expect((await reopened.getTask(result.taskId))?.metrics).toMatchObject(expected);
   });
 
+  it('emits a real context.usage per provider call and an interim estimate once tool results grow the prompt (CTX-1a)', async () => {
+    const { controller, runtime } = await fixture([]);
+    const strategy = strategyChoice().message.tool_calls[0]!;
+    const final = finalizeChoice('context estimate complete').message.tool_calls[0]!;
+    vi.spyOn(runtime, 'complete').mockResolvedValueOnce({ content: null, finishReason: 'tool_calls',
+      toolCalls: [{ ...strategy, type: 'function' }],
+      usage: { inputTokens: 500, outputTokens: 10, totalTokens: 510 } })
+      .mockResolvedValueOnce({ content: null, finishReason: 'tool_calls', toolCalls: [{ ...final, type: 'function' }],
+        usage: { inputTokens: 700, outputTokens: 20, totalTokens: 720 } });
+    const events: any[] = [];
+    await controller.runTask({ prompt: 'Verify the interim context estimate', workspace: 'fixture', eventSink: event => { events.push(event); } });
+    const usageEvents = events.filter(event => event.type === 'context.usage');
+    // iteration 1 real (500) -> interim estimate before iteration 2's dispatch, grown by the strategy tool-result message -> iteration 2 real (700).
+    expect(usageEvents).toHaveLength(3);
+    expect(usageEvents[0]).toMatchObject({ contextTokens: 500, iteration: 1 });
+    expect(usageEvents[0].estimated).not.toBe(true);
+    expect(usageEvents[1]).toMatchObject({ iteration: 2, estimated: true });
+    expect(usageEvents[1].contextTokens).toBeGreaterThan(500);
+    expect(usageEvents[2]).toMatchObject({ contextTokens: 700, iteration: 2 });
+    expect(usageEvents[2].estimated).not.toBe(true);
+  });
+
   it('returns ordered signed Anthropic content to the next model call after a Native tool', async () => {
     const { controller, runtime } = await fixture([]);
     const strategy = strategyChoice().message.tool_calls[0]!;

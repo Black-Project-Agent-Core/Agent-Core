@@ -66,7 +66,7 @@ import {
   summarizeAssistantProgress,
   iterationBudgetThreshold,
 } from './agent-turn-events.js';
-import { contextTokensFromUsage, estimateContextBreakdown } from './agent-context-usage.js';
+import { contextTokensFromUsage, estimateContextBreakdown, estimatePromptChars, CHARS_PER_TOKEN } from './agent-context-usage.js';
 import {
   AGENT_TURN_CHECKPOINT_SCHEMA_VERSION,
   AGENT_TURN_ITERATION_WINDOW_FULL,
@@ -1154,6 +1154,8 @@ export class NativeAgentController {
       + (input.userSelectedSkillDirective ? '\n\n' + input.userSelectedSkillDirective : '')
       + (input.attachmentReference ? '\n\n' + input.attachmentReference : '');
     const corePrompt = systemPrompt(delegatedTools, guidance);
+    // How much of message 0 (corePrompt) the context breakdown should move from 'system' into its own 'skills' category.
+    const skillGuidanceChars = guidance.length;
     const automaticRules = systemPrompt(delegatedTools, nativeGuidance);
     const decisionContext = privateContextAllowed ? await this.runtime.skillDecisionContext?.(task.id) ?? '' : '';
     const background = automaticContext(automaticRules + '\n\n' + profile.prompt + '\n\n' + packet.text, [
@@ -1265,6 +1267,9 @@ export class NativeAgentController {
       ensureNotStopped();
       if (!resumedState) await persistCheckpoint('model-ready');
       let budgetWarned = false;
+      // Set only from a real provider measurement this invocation; an interim estimate below never updates these.
+      let lastObservedContext: number | undefined;
+      let lastObservedChars: number | undefined;
       // Goal windows are relative to where this run started; the 75% warning measures the current window.
       const windowStart = goalMode ? nextIteration : 1;
       for (let iteration = nextIteration; iteration <= maxIterations; iteration += 1) {
@@ -1315,6 +1320,17 @@ export class NativeAgentController {
             finishReason: 'tool_calls',
           };
         } else {
+          // Display-only extrapolation of the just-appended tool results, between the last real measurement and this
+          // iteration's dispatch; never read by compaction, checkpoint or any limit decision.
+          if (lastObservedContext !== undefined && lastObservedChars !== undefined) {
+            const currentChars = estimatePromptChars(modelMessages(messages), modelTools);
+            const estimatedContextTokens = lastObservedContext + Math.ceil(Math.max(0, currentChars - lastObservedChars) / CHARS_PER_TOKEN);
+            const contextWindow = this.runtime.knownContextWindow?.(lastProviderId) ?? null;
+            await emitAgentTurnEvent(input.eventSink, { type: 'context.usage', contextTokens: estimatedContextTokens, iteration, maxIterations,
+              contextBreakdown: estimateContextBreakdown(modelMessages(messages), modelTools, { skillGuidanceChars }),
+              estimated: true,
+              ...(contextWindow ? { contextWindow } : {}) });
+          }
           const continuationRequirement: AgentProviderContinuationRequirement | undefined =
             resumedState && lastProviderId && lastModel
               ? {
@@ -1376,8 +1392,13 @@ export class NativeAgentController {
           if (observedContext !== undefined) {
             const contextWindow = this.runtime.knownContextWindow?.(reply.providerId ?? lastProviderId) ?? null;
             await emitAgentTurnEvent(input.eventSink, { type: 'context.usage', contextTokens: observedContext, iteration, maxIterations,
-              contextBreakdown: estimateContextBreakdown(modelMessages(messages), modelTools),
+              contextBreakdown: estimateContextBreakdown(modelMessages(messages), modelTools, { skillGuidanceChars }),
+              ...(reply.usage?.cacheReadInputTokens !== undefined ? { cacheReadTokens: reply.usage.cacheReadInputTokens } : {}),
+              ...(reply.usage?.cacheWriteInputTokens !== undefined ? { cacheWriteTokens: reply.usage.cacheWriteInputTokens } : {}),
               ...(contextWindow ? { contextWindow } : {}) });
+            // Baseline for the next iteration's interim estimate: this exact prompt produced this exact measurement.
+            lastObservedContext = observedContext;
+            lastObservedChars = estimatePromptChars(modelMessages(messages), modelTools);
           }
           if (reply.providerId && reply.providerId !== lastProviderId) {
             lastProviderId = reply.providerId;

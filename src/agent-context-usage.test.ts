@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contextTokensFromUsage, contextUsagePercent, estimateContextBreakdown } from './agent-context-usage.js';
+import { contextTokensFromUsage, contextUsagePercent, estimateContextBreakdown, estimatePromptChars } from './agent-context-usage.js';
 
 describe('contextTokensFromUsage', () => {
   it('uses the last call input as the full prompt and never adds cache tokens again', () => {
@@ -55,5 +55,40 @@ describe('estimateContextBreakdown', () => {
       { role: 'system', content: 'ab' }, { role: 'user', content: 'cd' }, { role: 'system', content: 'efgh' },
     ] as any, undefined);
     expect(out).toEqual({ system: 1, tools: 0, conversation: 2, memory: 0 });
+  });
+  it('splits a skills tool message and other tool messages into their own categories', () => {
+    const out = estimateContextBreakdown([
+      { role: 'system', content: 'abcd' },
+      { role: 'tool', name: 'skills', content: 'x'.repeat(8) },
+      { role: 'tool', name: 'read_file', content: 'y'.repeat(4) },
+    ] as any, undefined);
+    expect(out).toEqual({ system: 1, tools: 0, conversation: 0, memory: 0, skills: 2, toolResults: 1 });
+  });
+  it('moves skillGuidanceChars out of system and into skills', () => {
+    const out = estimateContextBreakdown([{ role: 'system', content: 'a'.repeat(20) }] as any, undefined, { skillGuidanceChars: 8 });
+    expect(out).toEqual({ system: 3, tools: 0, conversation: 0, memory: 0, skills: 2 });
+  });
+  it('never lets system go negative when the guidance estimate exceeds it', () => {
+    const out = estimateContextBreakdown([{ role: 'system', content: 'ab' }] as any, undefined, { skillGuidanceChars: 100 });
+    expect(out).toEqual({ system: 0, tools: 0, conversation: 0, memory: 0, skills: 25 });
+  });
+  it('sizes an assistant message with anthropicContent by that JSON, not content+tool_calls', () => {
+    const anthropicContent = [{ type: 'text', text: 'hi' }, { type: 'thinking', thinking: '', signature: 'sig' }];
+    const expected = Math.ceil(JSON.stringify(anthropicContent).length / 4);
+    const out = estimateContextBreakdown([
+      { role: 'assistant', content: 'ignored', tool_calls: [{ id: 'a' }], anthropicContent } as any,
+    ], undefined);
+    expect(out).toEqual({ system: 0, tools: 0, conversation: expected, memory: 0 });
+  });
+});
+
+describe('estimatePromptChars', () => {
+  it('sums every message plus the serialized tools, ungrouped', () => {
+    const messages = [{ role: 'system', content: 'abcd' }, { role: 'user', content: 'ef' }] as any;
+    const tools = [{ name: 't' }];
+    expect(estimatePromptChars(messages, tools)).toBe(4 + 2 + JSON.stringify(tools).length);
+  });
+  it('is zero for no messages and no tools', () => {
+    expect(estimatePromptChars([], undefined)).toBe(0);
   });
 });

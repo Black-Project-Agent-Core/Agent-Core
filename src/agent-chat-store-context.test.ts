@@ -23,15 +23,18 @@ function fixture() {
 }
 
 describe('chat turn context usage persistence', () => {
-  it('migrates additive nullable columns and is idempotent on reopen', () => {
+  it('migrates additive columns and is idempotent on reopen', () => {
     const { dbPath } = fixture();
     new AgentChatStore(dbPath);
     const db = new DatabaseSync(dbPath);
     const columns = (db.prepare('PRAGMA table_info(chat_turns)').all() as Array<{ name: string; notnull: number }>)
-      .filter(column => column.name.startsWith('context_'));
+      .filter(column => column.name.startsWith('context_') || column.name.startsWith('cache_'));
     db.close();
-    expect(columns.map(column => column.name).sort()).toEqual(['context_breakdown', 'context_tokens', 'context_window']);
-    expect(columns.every(column => column.notnull === 0)).toBe(true);
+    expect(columns.map(column => column.name).sort()).toEqual(
+      ['cache_read_tokens', 'cache_write_tokens', 'context_breakdown', 'context_estimated', 'context_tokens', 'context_window']);
+    // Nullable telemetry, except context_estimated: a boolean flag that is always written, never absent.
+    expect(columns.filter(column => column.name !== 'context_estimated').every(column => column.notnull === 0)).toBe(true);
+    expect(columns.find(column => column.name === 'context_estimated')?.notnull).toBe(1);
   });
 
   it('round-trips the last value and leaves legacy turns without data', () => {
@@ -96,6 +99,35 @@ describe('chat turn context usage persistence', () => {
     store.recordContextUsage('t1', 10, 100, undefined, { system: 1, tools: 0, conversation: 0 } as any);
     expect(store.getTurn('t1')?.contextTokens).toBe(10);
     expect(store.getTurn('t1')).not.toHaveProperty('contextBreakdown');
+  });
+
+  it('stores optional skills/toolResults breakdown keys when present and omits them when not', () => {
+    const { store } = fixture();
+    store.recordContextUsage('t1', 100, 100, undefined, { system: 1, tools: 2, conversation: 3, memory: 4, skills: 5, toolResults: 6 });
+    expect(store.getTurn('t1')?.contextBreakdown).toEqual({ system: 1, tools: 2, conversation: 3, memory: 4, skills: 5, toolResults: 6 });
+    store.recordContextUsage('t1', 100, 100, undefined, { system: 1, tools: 2, conversation: 3, memory: 4 });
+    expect(store.getTurn('t1')?.contextBreakdown).toEqual({ system: 1, tools: 2, conversation: 3, memory: 4 });
+  });
+
+  it('records cache tokens with a real measurement and keeps them across a later interim estimate', () => {
+    const { store } = fixture();
+    store.recordContextUsage('t1', 100, 1_000, undefined, undefined, { cacheReadTokens: 80, cacheWriteTokens: 5 }, false);
+    expect(store.getTurn('t1')).toMatchObject({ contextTokens: 100, cacheReadTokens: 80, cacheWriteTokens: 5 });
+    expect(store.getTurn('t1')).not.toHaveProperty('contextEstimated');
+    // An interim estimate carries no fresh cache numbers; the prior real ones must survive.
+    store.recordContextUsage('t1', 140, 1_000, undefined, undefined, undefined, true);
+    expect(store.getTurn('t1')).toMatchObject({ contextTokens: 140, cacheReadTokens: 80, cacheWriteTokens: 5, contextEstimated: true });
+    // The next real measurement overwrites both the cache numbers and clears the estimated flag.
+    store.recordContextUsage('t1', 150, 1_000, undefined, undefined, { cacheReadTokens: 90 }, false);
+    expect(store.getTurn('t1')).toMatchObject({ contextTokens: 150, cacheReadTokens: 90, cacheWriteTokens: 5 });
+    expect(store.getTurn('t1')).not.toHaveProperty('contextEstimated');
+  });
+
+  it('ignores a non-integer or negative cache token instead of writing it', () => {
+    const { store } = fixture();
+    store.recordContextUsage('t1', 100, 1_000, undefined, undefined, { cacheReadTokens: -1, cacheWriteTokens: 1.5 });
+    expect(store.getTurn('t1')?.cacheReadTokens).toBeUndefined();
+    expect(store.getTurn('t1')?.cacheWriteTokens).toBeUndefined();
   });
 
   it('omits the breakdown without throwing when the stored JSON is broken or incomplete', () => {

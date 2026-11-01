@@ -50,6 +50,11 @@ export interface AgentTurnEvent {
   contextWindow?: number;
   /** context.usage only: estimated (chars/4) split of that prompt by category; the UI scales it to contextTokens. */
   contextBreakdown?: ContextBreakdown;
+  /** context.usage only: cache tokens of the last REAL provider call; absent on an interim estimate or when the provider reported none. */
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  /** context.usage only: true when contextTokens/contextBreakdown are extrapolated since the last real provider call (no fresh measurement this iteration), never on the real measurement itself. */
+  estimated?: boolean;
   /** tool.completed only: wall-clock duration of the tool call. */
   durationMs?: number;
   /** tool.started / tool.completed: one-line argument summary (<= 80 chars, secret-keyed values masked). */

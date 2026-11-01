@@ -63,6 +63,11 @@ export interface AgentChatTurn extends NativeMemoryResultMetadata {
   contextWindow?: number;
   /** Estimated (chars/4) per-category split of that prompt; absent when none was recorded or the stored JSON is invalid. */
   contextBreakdown?: ContextBreakdown;
+  /** Cache tokens of the last real provider call this turn recorded; absent when none was reported, kept across a later interim estimate. */
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  /** True when contextTokens/contextBreakdown are the interim estimate (extrapolated since the last real provider call), not a fresh measurement. */
+  contextEstimated?: boolean;
   memoryUse?: AgentMemoryUse[];
   errorCode?: string;
   messageOrigin?: 'local-operator' | 'external-controller';
@@ -160,13 +165,18 @@ function mapConversation(row: Record<string, unknown>): AgentChatConversation {
     ...(row.last_turn_id ? { lastTurnId: String(row.last_turn_id) } : {}),
   };
 }
-/** Four safe non-negative integers, else undefined (the split is an estimate and never worth failing a read or write). */
+/** Four required safe non-negative integers plus two optional ones, else undefined (the split is an estimate and never worth failing a read or write). */
 function validContextBreakdown(value: unknown): ContextBreakdown | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const parts = value as Record<string, unknown>;
-  const keys: Array<keyof ContextBreakdown> = ['system', 'tools', 'conversation', 'memory'];
-  if (!keys.every(key => typeof parts[key] === 'number' && Number.isSafeInteger(parts[key]) && (parts[key] as number) >= 0)) return undefined;
-  return { system: parts.system as number, tools: parts.tools as number, conversation: parts.conversation as number, memory: parts.memory as number };
+  const requiredKeys: Array<keyof ContextBreakdown> = ['system', 'tools', 'conversation', 'memory'];
+  if (!requiredKeys.every(key => typeof parts[key] === 'number' && Number.isSafeInteger(parts[key]) && (parts[key] as number) >= 0)) return undefined;
+  const breakdown: ContextBreakdown = { system: parts.system as number, tools: parts.tools as number,
+    conversation: parts.conversation as number, memory: parts.memory as number };
+  for (const key of ['skills', 'toolResults'] as const) {
+    if (typeof parts[key] === 'number' && Number.isSafeInteger(parts[key]) && (parts[key] as number) >= 0) breakdown[key] = parts[key] as number;
+  }
+  return breakdown;
 }
 
 function mapTurn(row: Record<string, unknown>): AgentChatTurn {
@@ -198,6 +208,9 @@ function mapTurn(row: Record<string, unknown>): AgentChatTurn {
     ...(row.context_tokens !== null && row.context_tokens !== undefined ? { contextTokens: Number(row.context_tokens) } : {}),
     ...(row.context_window !== null && row.context_window !== undefined ? { contextWindow: Number(row.context_window) } : {}),
     ...(contextBreakdown ? { contextBreakdown } : {}),
+    ...(row.cache_read_tokens !== null && row.cache_read_tokens !== undefined ? { cacheReadTokens: Number(row.cache_read_tokens) } : {}),
+    ...(row.cache_write_tokens !== null && row.cache_write_tokens !== undefined ? { cacheWriteTokens: Number(row.cache_write_tokens) } : {}),
+    ...(row.context_estimated ? { contextEstimated: true } : {}),
     ...(memoryUse.length ? { memoryUse } : {}),
     createdAtMs: Number(row.created_at_ms),
     startedAtMs: Number(row.started_at_ms),
@@ -408,6 +421,16 @@ export class AgentChatStore {
       }
       if (!turnColumns.some(column => column.name === 'context_breakdown')) {
         db.exec('ALTER TABLE chat_turns ADD COLUMN context_breakdown TEXT');
+      }
+      if (!turnColumns.some(column => column.name === 'cache_read_tokens')) {
+        db.exec('ALTER TABLE chat_turns ADD COLUMN cache_read_tokens INTEGER');
+      }
+      if (!turnColumns.some(column => column.name === 'cache_write_tokens')) {
+        db.exec('ALTER TABLE chat_turns ADD COLUMN cache_write_tokens INTEGER');
+      }
+      // Whether the context_tokens/context_breakdown just recorded are the real measurement (0) or the interim estimate (1).
+      if (!turnColumns.some(column => column.name === 'context_estimated')) {
+        db.exec('ALTER TABLE chat_turns ADD COLUMN context_estimated INTEGER NOT NULL DEFAULT 0');
       }
       // Live loop ceiling, written with the per-iteration progress (iterations/retrieval_count already exist).
       if (!turnColumns.some(column => column.name === 'max_iterations')) {
@@ -1005,23 +1028,32 @@ export class AgentChatStore {
     }));
   }
 
-  /** Latest full-prompt size of a turn. Ancillary telemetry: invalid input is ignored and a write failure never reaches the turn. */
+  /**
+   * Latest full-prompt size of a turn. Ancillary telemetry: invalid input is ignored and a write failure never reaches the turn.
+   * `cache` carries the last REAL provider call's cache tokens (absent on an interim estimate, so the prior real value is kept);
+   * `estimated` always overwrites, since it describes whether THIS write's contextTokens/breakdown is real or extrapolated.
+   */
   recordContextUsage(turnId: string, contextTokens: number, contextWindow?: number | null,
-    progress?: { iteration?: number; maxIterations?: number }, breakdown?: ContextBreakdown): void {
+    progress?: { iteration?: number; maxIterations?: number }, breakdown?: ContextBreakdown,
+    cache?: { cacheReadTokens?: number; cacheWriteTokens?: number }, estimated?: boolean): void {
     if (!Number.isSafeInteger(contextTokens) || contextTokens < 0) return;
     const window = typeof contextWindow === 'number' && Number.isSafeInteger(contextWindow) && contextWindow > 0 ? contextWindow : null;
     // Estimated split travels with the size it was computed for; an invalid or missing breakdown clears the old one.
     const validBreakdown = validContextBreakdown(breakdown);
     const breakdownJson = validBreakdown ? JSON.stringify(validBreakdown) : null;
+    const cacheRead = Number.isSafeInteger(cache?.cacheReadTokens) && cache!.cacheReadTokens! >= 0 ? cache!.cacheReadTokens! : null;
+    const cacheWrite = Number.isSafeInteger(cache?.cacheWriteTokens) && cache!.cacheWriteTokens! >= 0 ? cache!.cacheWriteTokens! : null;
     const iteration = Number.isSafeInteger(progress?.iteration) && progress!.iteration! >= 0 ? progress!.iteration! : null;
     const maxIterations = Number.isSafeInteger(progress?.maxIterations) && progress!.maxIterations! > 0 ? progress!.maxIterations! : null;
     try {
       this.withDb(db => {
         // Live progress is monotonic (MAX) and COALESCE keeps an earlier value when this event carries none.
         db.prepare(`UPDATE chat_turns SET context_tokens=?, context_window=?, context_breakdown=?,
+          cache_read_tokens=COALESCE(?, cache_read_tokens), cache_write_tokens=COALESCE(?, cache_write_tokens),
+          context_estimated=?,
           iterations=CASE WHEN ? IS NULL THEN iterations ELSE MAX(COALESCE(iterations, 0), ?) END,
           max_iterations=COALESCE(?, max_iterations) WHERE turn_id=?`)
-          .run(contextTokens, window, breakdownJson, iteration, iteration, maxIterations, turnId);
+          .run(contextTokens, window, breakdownJson, cacheRead, cacheWrite, estimated ? 1 : 0, iteration, iteration, maxIterations, turnId);
         this.touchTurnConversation(db, turnId);
       });
     } catch { /* observability must not become execution authority */ }
