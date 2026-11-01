@@ -1,7 +1,7 @@
 import { Activity, BrainCircuit, ChevronRight, FileText, Paperclip, Gauge, Server, ListTodo, Cable } from 'lucide-react';
 import type { ActivityEntry, AgentChatUiState, DesktopSnapshot, TaskChanges } from './host';
 import { postHost, selectContextUsage } from './host';
-import { COMPACT_BUTTON_PERCENT, ContextMeter, SEGMENT_COLORS, contextBreakdownRows, contextMeterModel, formatTokenCount } from './ContextMeter';
+import { COMPACT_BUTTON_PERCENT, ContextMeter, FREE_SPACE_COLOR, SEGMENT_COLORS, contextBreakdownRows, contextMeterModel, formatTokenCount, isCategoryRow } from './ContextMeter';
 import { STEP_GLYPH, formatStepDuration } from './AgentSteps';
 import { useTaskChanges } from './useTaskChanges';
 import { formatBytes } from './model';
@@ -55,8 +55,12 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
   const model = turn?.model ?? chat?.active?.conversation.preferredModel ?? chat?.modelChoice;
   const meter = usage ? contextMeterModel(usage.contextTokens, usage.contextWindow) : undefined;
   const breakdownRows = usage ? contextBreakdownRows(usage.contextBreakdown, usage.contextTokens, usage.contextWindow) : [];
-  const segments = breakdownRows.map(row => ({ key: row.key, tokens: row.tokens }));
-  const usedOfCapacity = usage && meter ? (meter.known ? `${formatTokenCount(usage.contextTokens)} / ${formatTokenCount(usage.contextWindow!)}` : meter.label) : undefined;
+  const segments = breakdownRows.filter(isCategoryRow).map(row => ({ key: row.key, tokens: row.tokens }));
+  const usedOfCapacityRaw = usage && meter ? (meter.known ? `${formatTokenCount(usage.contextTokens)} / ${formatTokenCount(usage.contextWindow!)}` : meter.label) : undefined;
+  // '~' marks an interim estimate (extrapolated since the last real provider call), never the real measurement.
+  const usedOfCapacity = usedOfCapacityRaw && usage?.estimated ? '~' + usedOfCapacityRaw : usedOfCapacityRaw;
+  const cacheHitPercent = usage?.cacheReadTokens !== undefined && usage.contextTokens > 0
+    ? Math.round(usage.cacheReadTokens / usage.contextTokens * 100) : undefined;
   const iterationText = turn?.iterations === undefined ? undefined
     : turn.maxIterations === undefined ? String(turn.iterations) : `${turn.iterations} / ${turn.maxIterations}`;
   const provider = chat?.providers?.find(item => item.id === chat.providerChoice);
@@ -83,7 +87,7 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
         </div>}
         {breakdownRows.length > 0 && <ul className="inspector-context-breakdown" aria-label="Rincian context (estimasi)">
           {breakdownRows.map(row => <li key={row.key}>
-            <span className="inspector-swatch" aria-hidden="true" style={{ backgroundColor: SEGMENT_COLORS[row.key] }}/>
+            <span className="inspector-swatch" aria-hidden="true" style={{ backgroundColor: isCategoryRow(row) ? SEGMENT_COLORS[row.key] : FREE_SPACE_COLOR }}/>
             <span>{row.label}</span>
             <span>{formatTokenCount(row.tokens)}</span>
             <span>{row.percentOfWindow !== undefined ? row.percentOfWindow.toFixed(1) : row.percent}%</span>
@@ -105,6 +109,7 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
         <dt>State</dt><dd>{turn?.status ?? 'New conversation'}</dd>
         <dt>Iterations</dt><dd>{iterationText ?? stepText ?? 'Not recorded'}</dd>
         <dt>Context recall</dt><dd>{turn?.retrievalCount ?? 'Not recorded'}</dd>
+        {cacheHitPercent !== undefined && <><dt>Cache hit</dt><dd title="dari panggilan model terakhir">{cacheHitPercent}%</dd></>}
       </dl>{!usage&&<p>Token usage and capacity are not reported by this desktop bridge.</p>}</details>
       <details open><summary><Activity size={15}/>Tool Calls ({calls.length})</summary>
         {calls.length ? <ul className="inspector-call-list">{calls.map(step => <li key={step.turnId + ':' + step.seq}>

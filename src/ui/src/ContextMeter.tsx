@@ -7,7 +7,9 @@ const AUTO_COMPACT_CAPTION = 'otomatis di 100%';
 
 /** One colour per breakdown category: the bar segment and the swatch in the category list share it. */
 export const SEGMENT_COLORS: Record<keyof ContextBreakdown, string> =
-  { system: '#9ca3af', tools: '#14b8a6', conversation: '#3b82f6', memory: '#f97316' };
+  { system: '#9ca3af', tools: '#14b8a6', conversation: '#3b82f6', memory: '#f97316', skills: '#8b5cf6', toolResults: '#eab308' };
+/** Not a category: the dim swatch for the 'Free space' row, which is never a bar segment. */
+export const FREE_SPACE_COLOR = 'rgba(127, 127, 127, .35)';
 
 const isKnownCapacity = (capacity?: number | null): capacity is number =>
   typeof capacity === 'number' && Number.isFinite(capacity) && capacity > 0;
@@ -39,17 +41,26 @@ export function contextMeterModel(tokens: number, capacity?: number | null): Con
     hint: level === 'critical' ? 'Hampir penuh' : level === 'warn' ? 'Compact tersedia; otomatis di 100%' : '' };
 }
 
-/** percent = share of the used tokens (integer); percentOfWindow = share of the window capacity, one decimal, only when the capacity is known. */
-export type ContextBreakdownRow = { key: keyof ContextBreakdown; label: string; tokens: number; percent: number; percentOfWindow?: number };
+/** percent = share of the used tokens (integer); percentOfWindow = share of the window capacity, one decimal, only when the capacity is known.
+ *  key is 'free' only for the synthetic 'Free space' row (capacity minus used); that row is never a bar segment. */
+export type ContextBreakdownRow = { key: keyof ContextBreakdown | 'free'; label: string; tokens: number; percent: number; percentOfWindow?: number };
+
+/** True for an ordinary category row (not the synthetic 'Free space' row); narrows `key` back to a bar-segment-eligible key. */
+export function isCategoryRow(row: ContextBreakdownRow): row is ContextBreakdownRow & { key: keyof ContextBreakdown } {
+  return row.key !== 'free';
+}
 
 const BREAKDOWN_ORDER: ReadonlyArray<[keyof ContextBreakdown, string]> = [
-  ['system', 'System Instructions'], ['tools', 'Tools & MCP Manifests'],
-  ['conversation', 'Conversation & Files'], ['memory', 'Memory Injections']];
+  ['system', 'System Instructions'], ['tools', 'Tools & MCP Manifests'], ['skills', 'Skills'],
+  ['memory', 'Memory Injections'], ['conversation', 'Conversation & Files'], ['toolResults', 'Tool Results']];
+/** system/tools/conversation/memory are always shown, even at 0; skills/toolResults only get a row when the data has that key. */
+const ALWAYS_SHOWN: ReadonlySet<keyof ContextBreakdown> = new Set(['system', 'tools', 'conversation', 'memory']);
 
 /** Scales the chars/4 estimates to the provider total; largest-remainder rounding keeps the token sum exactly equal to contextTokens. */
 export function contextBreakdownRows(breakdown: ContextBreakdown | undefined, contextTokens: number, capacity?: number | null): ContextBreakdownRow[] {
   if (!breakdown || !(contextTokens > 0)) return [];
-  const raw = BREAKDOWN_ORDER.map(([key]) => Math.max(0, Number(breakdown[key]) || 0));
+  const order = BREAKDOWN_ORDER.filter(([key]) => ALWAYS_SHOWN.has(key) || breakdown[key] !== undefined);
+  const raw = order.map(([key]) => Math.max(0, Number(breakdown[key]) || 0));
   const sum = raw.reduce((acc, value) => acc + value, 0);
   if (sum <= 0) return [];
   const exact = raw.map(value => value * contextTokens / sum);
@@ -59,9 +70,17 @@ export function contextBreakdownRows(breakdown: ContextBreakdown | undefined, co
     .sort((a, b) => b.remainder - a.remainder || a.index - b.index);
   for (const { index } of byRemainder) { if (left <= 0) break; tokens[index] += 1; left -= 1; }
   const windowKnown = isKnownCapacity(capacity);
-  return BREAKDOWN_ORDER.map(([key, label], index) =>
+  const rows: ContextBreakdownRow[] = order.map(([key, label], index) =>
     ({ key, label, tokens: tokens[index], percent: Math.round(tokens[index] / contextTokens * 100),
       ...(windowKnown ? { percentOfWindow: Math.round(tokens[index] * 1000 / capacity) / 10 } : {}) }));
+  // 'Free space': capacity minus used, listed alongside the categories but never part of the bar (contextSegmentWidths
+  // already caps at 100% of used tokens; this row only informs the legend).
+  if (windowKnown) {
+    const freeTokens = Math.max(0, capacity! - contextTokens);
+    rows.push({ key: 'free', label: 'Free space', tokens: freeTokens, percent: 0,
+      percentOfWindow: Math.round(freeTokens * 1000 / capacity!) / 10 });
+  }
+  return rows;
 }
 
 export type ContextMeterSegment = { key: keyof ContextBreakdown; tokens: number };

@@ -159,7 +159,7 @@ export type AgentChatConversation = {
 };
 
 /** Estimated tokens (chars/4) per prompt part, written by the server per turn and on context.usage; not the provider total. */
-export type ContextBreakdown = { system: number; tools: number; conversation: number; memory: number };
+export type ContextBreakdown = { system: number; tools: number; conversation: number; memory: number; skills?: number; toolResults?: number };
 
 /** What the host reports about a file sent with a turn: metadata only, the file stays on disk. */
 export type AgentChatAttachment = {
@@ -193,6 +193,11 @@ export type AgentChatTurn = {
   contextTokens?: number;
   contextWindow?: number;
   contextBreakdown?: ContextBreakdown;
+  /** Cache tokens of the last real provider call; kept across a later interim estimate. */
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  /** True when contextTokens/contextBreakdown are the interim estimate, not a fresh measurement. */
+  contextEstimated?: boolean;
   memoryUse?: AgentMemoryUse[];
   errorCode?: string;
   createdAtMs: number;
@@ -304,6 +309,11 @@ export type AgentChatEvent = {
   contextTokens?: number;
   contextWindow?: number;
   contextBreakdown?: ContextBreakdown;
+  /** context.usage: cache tokens of the last REAL provider call; absent on an interim estimate. */
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  /** context.usage: true when contextTokens/contextBreakdown are extrapolated since the last real call. */
+  estimated?: boolean;
 };
 
 /** Public projection only; USER/SOUL text and filesystem paths never travel to the launcher. */
@@ -420,27 +430,41 @@ export function reduceAgentActivity(list: AgentChatActivity[], event: AgentChatE
   return list;
 }
 
-export type AgentContextUsage = { conversationId: string; contextTokens: number; contextWindow?: number; contextBreakdown?: ContextBreakdown; iteration?: number; maxIterations?: number };
+export type AgentContextUsage = { conversationId: string; contextTokens: number; contextWindow?: number; contextBreakdown?: ContextBreakdown;
+  iteration?: number; maxIterations?: number; cacheReadTokens?: number; cacheWriteTokens?: number; estimated?: boolean };
 
 /** Context size to show for the active conversation: the live event if it belongs to it, else the last persisted turn value. */
-export function selectContextUsage(chat?: AgentChatUiState): { contextTokens: number; contextWindow?: number; contextBreakdown?: ContextBreakdown; iteration?: number; maxIterations?: number } | undefined {
+export function selectContextUsage(chat?: AgentChatUiState): Omit<AgentContextUsage, 'conversationId'> | undefined {
   const active = chat?.active;
   if (!chat || !active) return undefined;
   if (chat.contextUsage && chat.contextUsage.conversationId === active.conversation.id) return chat.contextUsage;
   const last = [...active.turns].reverse().find(turn => turn.contextTokens !== undefined);
   return last ? { contextTokens: last.contextTokens!, ...(last.contextWindow !== undefined ? { contextWindow: last.contextWindow } : {}),
-    ...(last.contextBreakdown ? { contextBreakdown: last.contextBreakdown } : {}) } : undefined;
+    ...(last.contextBreakdown ? { contextBreakdown: last.contextBreakdown } : {}),
+    ...(last.cacheReadTokens !== undefined ? { cacheReadTokens: last.cacheReadTokens } : {}),
+    ...(last.cacheWriteTokens !== undefined ? { cacheWriteTokens: last.cacheWriteTokens } : {}),
+    ...(last.contextEstimated ? { estimated: true } : {}) } : undefined;
 }
 
-/** Keeps the last context.usage (a snapshot of the latest prompt, not an accumulation); other events leave it unchanged.
- *  The breakdown belongs to that one call: an event without it never inherits the previous one. */
+/**
+ * Keeps the last context.usage (a snapshot of the latest prompt, not an accumulation); other events leave it unchanged.
+ * The breakdown belongs to that one call: an event without it never inherits the previous one. cacheReadTokens/
+ * cacheWriteTokens are the opposite: an interim estimate carries no fresh cache numbers, so the last real ones are
+ * kept (same COALESCE the server store applies); `estimated` always overwrites, since it describes THIS value.
+ */
 export function reduceContextUsage(prev: AgentContextUsage | undefined, event: AgentChatEvent): AgentContextUsage | undefined {
   if (event.type !== 'context.usage' || typeof event.contextTokens !== 'number') return prev;
+  const samePrompt = prev?.conversationId === event.conversationId;
   return { conversationId: event.conversationId, contextTokens: event.contextTokens,
     ...(typeof event.contextWindow === 'number' ? { contextWindow: event.contextWindow } : {}),
     ...(event.contextBreakdown ? { contextBreakdown: event.contextBreakdown } : {}),
     ...(event.iteration !== undefined ? { iteration: event.iteration } : {}),
-    ...(event.maxIterations !== undefined ? { maxIterations: event.maxIterations } : {}) };
+    ...(event.maxIterations !== undefined ? { maxIterations: event.maxIterations } : {}),
+    ...(event.cacheReadTokens !== undefined ? { cacheReadTokens: event.cacheReadTokens }
+      : samePrompt && prev?.cacheReadTokens !== undefined ? { cacheReadTokens: prev.cacheReadTokens } : {}),
+    ...(event.cacheWriteTokens !== undefined ? { cacheWriteTokens: event.cacheWriteTokens }
+      : samePrompt && prev?.cacheWriteTokens !== undefined ? { cacheWriteTokens: prev.cacheWriteTokens } : {}),
+    ...(event.estimated ? { estimated: true } : {}) };
 }
 
 export type WorkflowsSnapshot = {

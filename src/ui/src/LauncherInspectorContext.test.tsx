@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { LauncherInspector } from './LauncherInspector';
-import { SEGMENT_COLORS } from './ContextMeter';
+import { FREE_SPACE_COLOR, SEGMENT_COLORS } from './ContextMeter';
 import { postHost } from './host';
 import type { AgentChatUiState } from './host';
 
@@ -43,7 +43,7 @@ it('never guesses the capacity: single bar, no "% used", label text in the heade
   expect(screen.queryByTestId('context-segment-system')).toBeNull();
   expect(screen.getByRole('meter')).not.toHaveAttribute('aria-valuenow');
   expect(screen.getAllByRole('listitem').map(item => item.textContent)).toEqual([
-    'System Instructions1k25%', 'Tools & MCP Manifests1k25%', 'Conversation & Files1k25%', 'Memory Injections1k25%']);
+    'System Instructions1k25%', 'Tools & MCP Manifests1k25%', 'Memory Injections1k25%', 'Conversation & Files1k25%']);
   unknown.unmount();
   const none = renderInspector(chatWith({}));
   expect(screen.getByText('Context')).toBeInTheDocument();
@@ -51,20 +51,50 @@ it('never guesses the capacity: single bar, no "% used", label text in the heade
   expect(none.container).not.toHaveTextContent('%');
 });
 
-it('lists the four categories with a coloured swatch, tokens and the percent of the window, feeding the same segments to the bar', () => {
+it('lists the four categories plus Free space with a coloured swatch, tokens and the percent of the window, feeding only the categories to the bar', () => {
   const view = renderInspector(chatWith({ contextTokens: 100_000, contextWindow: 1_000_000,
     contextBreakdown: { system: 1, tools: 2, conversation: 3, memory: 4 } }));
   const items = screen.getAllByRole('listitem');
   expect(items.map(item => item.textContent)).toEqual([
-    'System Instructions10k1.0%', 'Tools & MCP Manifests20k2.0%', 'Conversation & Files30k3.0%', 'Memory Injections40k4.0%']);
+    'System Instructions10k1.0%', 'Tools & MCP Manifests20k2.0%', 'Memory Injections40k4.0%', 'Conversation & Files30k3.0%',
+    'Free space900k90.0%']);
   const swatches = view.container.querySelectorAll('.inspector-swatch');
-  expect(swatches).toHaveLength(4);
+  expect(swatches).toHaveLength(5);
   expect(swatches[0]).toHaveAttribute('aria-hidden', 'true');
   expect(swatches[0]).toHaveStyle({ backgroundColor: SEGMENT_COLORS.system });
-  expect(swatches[3]).toHaveStyle({ backgroundColor: SEGMENT_COLORS.memory });
+  expect(swatches[2]).toHaveStyle({ backgroundColor: SEGMENT_COLORS.memory });
+  expect(swatches[4]).toHaveStyle({ backgroundColor: FREE_SPACE_COLOR });
   expect(screen.getByTestId('context-segment-system')).toHaveStyle({ width: '1%' });
   expect(screen.getByTestId('context-segment-memory')).toHaveStyle({ width: '4%' });
-  expect(view.container).not.toHaveTextContent('Free space');
+  expect(screen.queryByTestId('context-segment-free')).toBeNull();
+});
+
+it('shows only the categories present in the data: Skills and Tool Results appear when the breakdown has them', () => {
+  const view = renderInspector(chatWith({ contextTokens: 100_000, contextWindow: 1_000_000,
+    contextBreakdown: { system: 1, tools: 1, conversation: 1, memory: 1, skills: 1, toolResults: 1 } }));
+  const items = screen.getAllByRole('listitem');
+  expect(items.map(item => item.textContent?.split(/\d/)[0])).toEqual([
+    'System Instructions', 'Tools & MCP Manifests', 'Skills', 'Memory Injections', 'Conversation & Files', 'Tool Results', 'Free space']);
+  const swatches = view.container.querySelectorAll('.inspector-swatch');
+  expect(swatches[2]).toHaveStyle({ backgroundColor: SEGMENT_COLORS.skills });
+  expect(swatches[5]).toHaveStyle({ backgroundColor: SEGMENT_COLORS.toolResults });
+});
+
+it('prefixes the used number with "~" only when the turn\'s context usage is an interim estimate', () => {
+  const real = renderInspector(chatWith({ contextTokens: 144_000, contextWindow: 1_000_000 }));
+  expect(real.container.querySelector('.inspector-context-head')).toHaveTextContent('144k / 1M');
+  real.unmount();
+  const estimated = renderInspector(chatWith({ contextTokens: 144_000, contextWindow: 1_000_000, contextEstimated: true }));
+  expect(estimated.container.querySelector('.inspector-context-head')).toHaveTextContent('~144k / 1M');
+});
+
+it('shows a Cache hit row only when cacheReadTokens is known, as a percent of the current context size', () => {
+  const without = renderInspector(chatWith({ contextTokens: 100_000, contextWindow: 1_000_000 }));
+  expect(without.container).not.toHaveTextContent('Cache hit');
+  without.unmount();
+  const view = renderInspector(chatWith({ contextTokens: 100_000, contextWindow: 1_000_000, cacheReadTokens: 80_000 }));
+  expect(view.container).toHaveTextContent('Cache hit80%');
+  expect(screen.getByText('80%')).toHaveAttribute('title', 'dari panggilan model terakhir');
 });
 
 it('reads iterations and context recall from the polled turn row, falling back only when absent', () => {

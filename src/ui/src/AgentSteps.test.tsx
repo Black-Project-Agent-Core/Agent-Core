@@ -178,11 +178,12 @@ describe('Inspector Context Window breakdown', () => {
   };
   const LIST = { name: 'Rincian context (estimasi)' };
 
-  it('lists the four estimated parts in a fixed order, scaled to the provider total', () => {
+  it('lists the four estimated parts plus Free space in a fixed order, scaled to the provider total', () => {
     render(<LauncherInspector chat={chatWithUsage({ system: 3, tools: 6, conversation: 7, memory: 4 })} logs={[]} open onToggle={vi.fn()}/>);
     const list = screen.getByRole('list', LIST);
     expect(within(list).getAllByRole('listitem').map(item => item.textContent)).toEqual([
-      'System Instructions1501.5%', 'Tools & MCP Manifests3003.0%', 'Conversation & Files3503.5%', 'Memory Injections2002.0%']);
+      'System Instructions1501.5%', 'Tools & MCP Manifests3003.0%', 'Memory Injections2002.0%', 'Conversation & Files3503.5%',
+      'Free space9k90.0%']);
     expect(screen.queryByText(/Estimasi dari ukuran isi prompt/)).toBeNull();
   });
 

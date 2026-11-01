@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { COMPACT_BUTTON_PERCENT, ContextMeter, NEAR_FULL_PERCENT, SEGMENT_COLORS, contextBreakdownRows, contextMeterModel, contextSegmentWidths, formatTokenCount } from './ContextMeter';
+import { COMPACT_BUTTON_PERCENT, ContextMeter, FREE_SPACE_COLOR, NEAR_FULL_PERCENT, SEGMENT_COLORS, contextBreakdownRows, contextMeterModel, contextSegmentWidths, formatTokenCount, isCategoryRow } from './ContextMeter';
 import { reduceContextUsage, selectContextUsage } from './host';
 import type { AgentChatEvent, AgentChatUiState } from './host';
 
@@ -90,38 +90,54 @@ describe('ContextMeter', () => {
 });
 
 describe('contextBreakdownRows', () => {
-  const LABELS = ['System Instructions', 'Tools & MCP Manifests', 'Conversation & Files', 'Memory Injections'];
+  // system, tools, memory, conversation: the required categories, in their fixed display order (skills/toolResults omitted here).
+  const LABELS = ['System Instructions', 'Tools & MCP Manifests', 'Memory Injections', 'Conversation & Files'];
   it('scales the estimates to the provider total in a fixed order and the rows add up exactly', () => {
     const rows = contextBreakdownRows({ system: 3, tools: 6, conversation: 7, memory: 4 }, 1000);
-    expect(rows.map(row => row.key)).toEqual(['system', 'tools', 'conversation', 'memory']);
+    expect(rows.map(row => row.key)).toEqual(['system', 'tools', 'memory', 'conversation']);
     expect(rows.map(row => row.label)).toEqual(LABELS);
-    expect(rows.map(row => row.tokens)).toEqual([150, 300, 350, 200]);
-    expect(rows.map(row => row.percent)).toEqual([15, 30, 35, 20]);
+    expect(rows.map(row => row.tokens)).toEqual([150, 300, 200, 350]);
+    expect(rows.map(row => row.percent)).toEqual([15, 30, 20, 35]);
     expect(rows.reduce((sum, row) => sum + row.tokens, 0)).toBe(1000);
   });
   it('uses largest-remainder rounding so the token sum is exactly the total', () => {
     const rows = contextBreakdownRows({ system: 1, tools: 1, conversation: 1, memory: 0 }, 100);
-    expect(rows.map(row => row.tokens)).toEqual([34, 33, 33, 0]);
-    expect(rows.map(row => row.percent)).toEqual([34, 33, 33, 0]);
+    expect(rows.map(row => row.tokens)).toEqual([34, 33, 0, 33]);
+    expect(rows.map(row => row.percent)).toEqual([34, 33, 0, 33]);
     expect(rows.reduce((sum, row) => sum + row.tokens, 0)).toBe(100);
     const big = contextBreakdownRows({ system: 1234, tools: 5678, conversation: 91011, memory: 7 }, 123_457);
     expect(big.reduce((sum, row) => sum + row.tokens, 0)).toBe(123_457);
   });
-  it('adds percentOfWindow rounded to one decimal only when the capacity is known', () => {
+  it('adds percentOfWindow rounded to one decimal only when the capacity is known, and a Free space row for the remainder', () => {
     const rows = contextBreakdownRows({ system: 3, tools: 6, conversation: 7, memory: 4 }, 1000, 3000);
-    expect(rows.map(row => row.percentOfWindow)).toEqual([5, 10, 11.7, 6.7]);
-    expect(rows.map(row => row.percent)).toEqual([15, 30, 35, 20]);
+    expect(rows.map(row => row.key)).toEqual(['system', 'tools', 'memory', 'conversation', 'free']);
+    expect(rows.map(row => row.percentOfWindow)).toEqual([5, 10, 6.7, 11.7, 66.7]);
+    expect(rows.map(row => row.percent)).toEqual([15, 30, 20, 35, 0]);
+    expect(rows.at(-1)).toMatchObject({ label: 'Free space', tokens: 2000 });
     expect(contextBreakdownRows({ system: 1, tools: 0, conversation: 0, memory: 0 }, 373_100, 1_000_000)[0].percentOfWindow).toBe(37.3);
     for (const capacity of [undefined, null, 0, -1, Number.NaN]) {
-      const row = contextBreakdownRows({ system: 1, tools: 0, conversation: 0, memory: 0 }, 1000, capacity)[0];
-      expect(row.percentOfWindow).toBeUndefined();
-      expect(row.percent).toBe(100);
+      const rowsNoCapacity = contextBreakdownRows({ system: 1, tools: 0, conversation: 0, memory: 0 }, 1000, capacity);
+      expect(rowsNoCapacity.find(row => row.key === 'free')).toBeUndefined();
+      expect(rowsNoCapacity[0]!.percentOfWindow).toBeUndefined();
+      expect(rowsNoCapacity[0]!.percent).toBe(100);
     }
   });
   it('is empty without a breakdown, with all-zero estimates, or without a provider total', () => {
     expect(contextBreakdownRows(undefined, 1000)).toEqual([]);
     expect(contextBreakdownRows({ system: 0, tools: 0, conversation: 0, memory: 0 }, 1000)).toEqual([]);
     expect(contextBreakdownRows({ system: 1, tools: 1, conversation: 1, memory: 1 }, 0)).toEqual([]);
+  });
+  it('only rows skills/toolResults when the breakdown actually carries them, in their fixed slots', () => {
+    const withBoth = contextBreakdownRows({ system: 1, tools: 1, conversation: 1, memory: 1, skills: 1, toolResults: 1 }, 600);
+    expect(withBoth.map(row => row.key)).toEqual(['system', 'tools', 'skills', 'memory', 'conversation', 'toolResults']);
+    const withoutEither = contextBreakdownRows({ system: 1, tools: 1, conversation: 1, memory: 1 }, 400);
+    expect(withoutEither.map(row => row.key)).toEqual(['system', 'tools', 'memory', 'conversation']);
+  });
+  it('isCategoryRow excludes only the synthetic Free space row', () => {
+    const rows = contextBreakdownRows({ system: 1, tools: 1, conversation: 1, memory: 1 }, 1000, 2000);
+    expect(rows.filter(isCategoryRow).map(row => row.key)).toEqual(['system', 'tools', 'memory', 'conversation']);
+    expect(rows.find(row => row.key === 'free')).toBeDefined();
+    expect(FREE_SPACE_COLOR).not.toBe(SEGMENT_COLORS.system);
   });
 });
 
@@ -141,6 +157,22 @@ describe('reduceContextUsage', () => {
     expect(next).toEqual({ conversationId: 'chat-1', contextTokens: 120_000 });
     expect(next).not.toHaveProperty('contextBreakdown');
   });
+  it('keeps the last real cache tokens across a later interim estimate, and sets estimated only on that event', () => {
+    const real = reduceContextUsage(undefined,
+      ev({ type: 'context.usage', contextTokens: 100_000, cacheReadTokens: 80_000, cacheWriteTokens: 5_000 }));
+    expect(real).toEqual({ conversationId: 'chat-1', contextTokens: 100_000, cacheReadTokens: 80_000, cacheWriteTokens: 5_000 });
+    const estimate = reduceContextUsage(real, ev({ type: 'context.usage', contextTokens: 140_000, estimated: true }));
+    expect(estimate).toEqual({ conversationId: 'chat-1', contextTokens: 140_000, cacheReadTokens: 80_000, cacheWriteTokens: 5_000, estimated: true });
+    // The next real measurement overwrites only the cache field it carries (cacheWriteTokens is still coalesced forward)
+    // and clears estimated (the event carries neither the key nor true).
+    const nextReal = reduceContextUsage(estimate, ev({ type: 'context.usage', contextTokens: 150_000, cacheReadTokens: 90_000 }));
+    expect(nextReal).toEqual({ conversationId: 'chat-1', contextTokens: 150_000, cacheReadTokens: 90_000, cacheWriteTokens: 5_000 });
+  });
+  it('never carries cache tokens over from a different conversation', () => {
+    const first = reduceContextUsage(undefined, ev({ type: 'context.usage', contextTokens: 100_000, cacheReadTokens: 80_000 }));
+    const other = reduceContextUsage(first, { ...ev({ type: 'context.usage', contextTokens: 50_000 }), conversationId: 'chat-2' });
+    expect(other).toEqual({ conversationId: 'chat-2', contextTokens: 50_000 });
+  });
 });
 
 describe('selectContextUsage', () => {
@@ -153,5 +185,12 @@ describe('selectContextUsage', () => {
     expect(selectContextUsage(chat)).toEqual({ contextTokens: 60, contextWindow: 100, contextBreakdown });
     const bare = { active: { conversation: { id: 'chat-1' }, turns: [{ id: 't1', contextTokens: 50 }] } } as unknown as AgentChatUiState;
     expect(selectContextUsage(bare)).toEqual({ contextTokens: 50 });
+  });
+  it('maps a turn\'s cache tokens and estimated flag, omitting them when absent', () => {
+    const chat = { active: { conversation: { id: 'chat-1' }, turns: [
+      { id: 't1', contextTokens: 90, cacheReadTokens: 70, cacheWriteTokens: 3, contextEstimated: true }] } } as unknown as AgentChatUiState;
+    expect(selectContextUsage(chat)).toEqual({ contextTokens: 90, cacheReadTokens: 70, cacheWriteTokens: 3, estimated: true });
+    const withoutThem = { active: { conversation: { id: 'chat-1' }, turns: [{ id: 't1', contextTokens: 90 }] } } as unknown as AgentChatUiState;
+    expect(selectContextUsage(withoutThem)).toEqual({ contextTokens: 90 });
   });
 });
