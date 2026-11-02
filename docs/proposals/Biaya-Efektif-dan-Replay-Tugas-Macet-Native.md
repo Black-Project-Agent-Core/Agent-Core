@@ -1,7 +1,7 @@
 # Biaya Efektif dan Replay Tugas Macet Native
 Tanggal: 2026-11-02 (Asia/Tomsk)
 Revisi: 1
-Status: PROPOSED
+Status: APPROVED (revisi 1, scope V1 build); V1 IMPLEMENTED, BUILT AND ACTIVE 2026-11-02, tes sempit lolos, dua kriteria V1 OPEN (lihat bagian Keputusan); V2 OPEN, belum dikerjakan; V3 HOLD; V4 tidak disetujui
 Jenis: Improvement
 Asal dan bukti: R1 = repo `microsoft/TokenEconomizer` (klon `F:\Referensi\TokenEconomizer`, HEAD 85a8247; tipe repo plus makalah arXiv 2610.22732 yang hanya dibaca lewat README, PDF tidak dibuka; kredibilitas moderat untuk kode, lemah sampai sedang untuk klaim efek). R2 = metrik runtime Agent Core, `runtime/agent-runtime/state.json` (mtime 2026-11-02T03:52Z, 192 tugas), dihitung read-only dengan skrip sesi yang tidak disimpan di repo. Cakupan R1: `dibaca penuh 163 / dilihat sekilas 39 / tidak dibuka 16 dari 218 file` (14 saya baca langsung, sisanya subagen read-only sebagai petunjuk; setiap titik yang dipakai di sini saya buka ulang sendiri). Urutan baca: README dan dokumen desain, lalu file yang berpadanan dengan owner Agent Core (biaya, guard, caching, hook), lalu sisanya paralel. Tidak dibuka: 8 aset gambar/SVG/GIF dan generatornya di `docs/assets`, 3 JSON workload, 5 tes routing/fleet. Bacaan parsial `te_harness/swebench.py` dan `webbench.py` tidak dipakai untuk kesimpulan utama.
 
@@ -90,7 +90,17 @@ Harapan, belum terukur: pernyataan biaya yang bisa direproduksi dan keputusan gu
 ## Riwayat revisi
 
 - Revisi 1 (2026-11-02): dokumen pertama, hasil studi R1.
+- Catatan implementasi V1 (2026-11-02): fungsi `effectiveTaskCost` ada di `src/agent-runtime.ts`; isi dokumen ini tidak diubah.
 
 ## Keputusan pengguna dan scope
 
-Belum ada keputusan; menunggu APPROVE / REVISE / HOLD / REJECT.
+APPROVE revisi 1, scope V1 (build), per instruksi tetap pengguna 2026-11-02 untuk mempromosikan proposal pending di Native Agent Core (Claude sebagai orkestrator, Native sebagai pelaksana). Cakupan persetujuan: delegasi, prioritas, implementasi, tes Native dan commit lokal. V2 menunggu giliran berikutnya; V3 tetap HOLD (perlu angka V2 dan persetujuan tersendiri); V4 tidak disetujui. Push, rilis dan tag tidak tercakup.
+
+### Status implementasi V1 (2026-11-02)
+
+- Kode: `effectiveTaskCost(metrics, models, overhead?)` di `src/agent-runtime.ts`, fungsi murni; bobot input segar 1,0, baca-cache 0,10, tulis-cache 1,25, output 5,0; `fresh = max(0, inputTokens - baca - tulis)`. Label `complete`, `parsial` (hitungan `*ObservedCalls` di bawah `modelCalls`, atau tanpa panggilan) dan `tidak-berharga` (id model hilang atau di luar tabel, termasuk tugas campuran model berharga dan tak berharga; total dan komponen `null`). Overhead REM dihitung di kolom terpisah dan tidak masuk `total`. Belum ada pemanggil; konsumen pertama adalah V2.
+- Tes: `tests/agent-effective-cost.test.ts`, 8 lolos (7.000 untuk contoh 1.000/10.000/2.000/500, label `parsial`, model tak dikenal tidak melempar, overhead terpisah, fresh tidak negatif).
+- Aktivasi: `npm run build` bersih dan Core di-restart; fungsi ada di `dist/agent-runtime.js`.
+- Pada `state.json` nyata (baca-saja, 194 tugas): 70 `complete` (35.320.653), 15 `parsial` (2.561.275), 109 `tidak-berharga` (model non-Claude atau tak dikenal, termasuk 5 tugas campuran).
+- OPEN 1: kriteria "mereproduksi total studi" belum terpenuhi persis. Tugas berlabel lengkap dengan minimal satu model Claude berjumlah 74 (70 Claude murni dan 4 campuran), sama dengan jumlah tugas studi, dengan total sekitar 41.447.054 terhadap 43.028.541 (-3,7%). Penyebab selisih belum terisolasi karena skrip studi tidak disimpan di repo; angka studi tetap acuan kewajaran, bukan target kesamaan.
+- OPEN 2: tabel bobot (`pricedOn` 2026-07-27) belum diverifikasi ke dokumentasi harga resmi. Bobot adalah konvensi akuntansi, bukan tagihan.
