@@ -122,7 +122,7 @@ function projectResult(result){
       .filter(key=>result[key]!==undefined).map(key=>[key,result[key]])),
   };
 }
-async function sendTurn(conversationId,prompt,clientRequestId,evaluation,providerId){
+async function sendTurn(conversationId,prompt,clientRequestId,evaluation,providerId,model){
   const startedAt=Date.now();
   let result;
   const controller=new AbortController();
@@ -133,7 +133,7 @@ async function sendTurn(conversationId,prompt,clientRequestId,evaluation,provide
   const response=await fetch(baseUrl+`/agent/chat/conversations/${encodeURIComponent(conversationId)}/turns`,{
     method:'POST',
     headers:{'X-Agent-Core-UI-Token':token,'X-Agent-Core-Chat-Origin':'external-controller','content-type':'application/json'},
-    body:JSON.stringify({clientRequestId,prompt,...(evaluation?{evaluation}:{}),...(providerId?{providerId}:{})}),
+    body:JSON.stringify({clientRequestId,prompt,...(evaluation?{evaluation}:{}),...(providerId?{providerId}:{}),...(model?{model}:{})}),
     signal:controller.signal,
   });
   if(!response.ok){
@@ -186,7 +186,7 @@ async function sendTurn(conversationId,prompt,clientRequestId,evaluation,provide
       const turn=detail?.turns?.find(item=>item.id===result.turnId);
       if(turn?.status==='finalized'){
         // The exact request is confirmed terminal; this POST reads its existing deduplicated result.
-        await sendTurn(conversationId,prompt,clientRequestId,evaluation,providerId);
+        await sendTurn(conversationId,prompt,clientRequestId,evaluation,providerId,model);
         return;
       }
       if(turn&&['failed','stopped','interrupted'].includes(turn.status))throw new Error(turn.errorCode||'AGENT_CHAT_WAIT_ENDED');
@@ -206,8 +206,8 @@ function usage(){
     '       native-chat-bridge.mjs read <conversationId> [--max-messages N]',
     '       native-chat-bridge.mjs create [--workspace name] [--title title]',
 
-    '       native-chat-bridge.mjs send <conversationId> --prompt text [--client-request-id id] [--provider id]',
-    '       native-chat-bridge.mjs send <conversationId> --stdin [--client-request-id id] [--provider id]',
+    '       native-chat-bridge.mjs send <conversationId> --prompt text [--client-request-id id] [--provider id [--model id]]',
+    '       native-chat-bridge.mjs send <conversationId> --stdin [--client-request-id id] [--provider id [--model id]]',
     '       native-chat-bridge.mjs cancel <turnId>',
   ].join('\n');
 }
@@ -262,7 +262,11 @@ async function main(){
     // Optional route pin from GET /agent/chat/providers; the server validates it (absent or auto = rotation).
     const providerId=typeof options.provider==='string'?options.provider.trim():undefined;
     if(providerId!==undefined&&!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(providerId))throw new Error('provider is invalid');
-    await sendTurn(id,prompt,requestId,evaluation,providerId);
+    // Optional model for the pinned route; the server checks it against that route's models.
+    const model=typeof options.model==='string'?options.model.trim():undefined;
+    if(model!==undefined&&providerId===undefined)throw new Error('model requires provider');
+    if(model!==undefined&&!/^[A-Za-z0-9][A-Za-z0-9._:\/-]{0,99}$/.test(model))throw new Error('model is invalid');
+    await sendTurn(id,prompt,requestId,evaluation,providerId,model);
     return;
   }
   if(command==='cancel'){

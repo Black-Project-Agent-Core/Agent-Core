@@ -99,4 +99,33 @@ describe('Native chat CLI result projection', () => {
       await new Promise<void>(resolve => server.close(() => resolve()));
     }
   });
+
+  it('forwards --model as the turn model only with --provider and rejects a malformed or unpinned one before sending', async () => {
+    const bodies: any[] = [];
+    const server = createServer((request, response) => {
+      let raw = ''; request.on('data', chunk => { raw += chunk; });
+      request.on('end', () => {
+        bodies.push(JSON.parse(raw));
+        response.writeHead(200, { 'content-type': 'application/x-ndjson' });
+        response.end(JSON.stringify({ type: 'result', result: { conversationId: 'fixture-chat', status: 'finalized', response: 'ok' } }) + '\n');
+      });
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('fixture listener unavailable');
+      const env = { SystemRoot: process.env.SystemRoot, AGENT_CORE_UI_TOKEN: 'isolated-bridge-fixture-token',
+        AGENT_CORE_PORT: String(address.port), AGENT_CORE_NATIVE_CHAT_TIMEOUT_MS: '5000' };
+      const run = (...extra: string[]) => execute(process.execPath, [bridge, 'send', 'fixture-chat', '--prompt', 'p',
+        '--client-request-id', 'fixture-request', ...extra], { env, windowsHide: true, timeout: 5_000 });
+      await run('--provider', 'anthropic', '--model', 'claude-haiku-5-5');
+      await expect(run('--model', 'claude-haiku-5-5')).rejects.toMatchObject({ stdout: expect.stringContaining('model requires provider') });
+      await expect(run('--provider', 'anthropic', '--model', 'bad model')).rejects.toMatchObject({ stdout: expect.stringContaining('model is invalid') });
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0]).toMatchObject({ providerId: 'anthropic', model: 'claude-haiku-5-5' });
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+  });
 });
