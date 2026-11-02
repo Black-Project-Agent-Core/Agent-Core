@@ -365,6 +365,8 @@
 .launcher-shell .chat-message-list{gap:24px}
 .launcher-shell .chat-message-list .chat-message{display:flex;flex-direction:row;align-items:flex-start;gap:12px;max-width:100%;width:100%;border:0;background:none;padding:0;border-radius:0}
 .launcher-shell .chat-message-list .chat-message.user{flex-direction:row-reverse}
+.launcher-shell .chat-message-list .chat-message.pending{flex-direction:column;align-items:stretch}
+.launcher-shell .chat-message-list .chat-message.pending>.chat-message-body{flex:none;min-width:0}
 .chat-message-avatar{width:28px;height:28px;display:grid;place-items:center;background:#0891b2;border-radius:8px;flex:none;color:#cbd5e1}
 .chat-message-avatar img{width:22px;height:22px;object-fit:contain}
 .chat-message.user .chat-message-avatar{background:#334155}
