@@ -15,7 +15,7 @@ import type {
 } from './types.js';
 import type { GrafelCliCapabilityProbe } from './provider-capabilities.js';
 import { buildOwnedChildEnv } from '../security/environment.js';
-import { comparablePath } from '../portability/paths.js';
+import { comparablePath, pathInside } from '../portability/paths.js';
 
 function parseJsonValue(text: string): unknown {
   const trimmed = text.trim();
@@ -35,12 +35,6 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
   return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
     ? parsed as Record<string, unknown>
     : null;
-}
-
-function pathInside(candidate: string, root: string): boolean {
-  const child = comparablePath(candidate);
-  const parent = comparablePath(root);
-  return child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
 }
 
 function normalizeSha256(value: unknown): string | undefined {

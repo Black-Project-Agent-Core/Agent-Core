@@ -10,7 +10,7 @@ import { unpackTar } from 'modern-tar';
 import yauzl from 'yauzl';
 import { fetchWithPolicy } from '../net/outbound-request.js';
 import { writeOwnedFileAtomic } from '../persistence/atomic-file.js';
-import { comparable, pathExists as exists } from './path-safety.js';
+import { inside, pathExists as exists } from './path-safety.js';
 
 export type ProvisionProviderId = 'python' | 'csharp' | 'powershell';
 
@@ -172,11 +172,6 @@ const BOUNDED_ZIP_COMPRESSION_METHODS = new Set([0, 8]);
 const WINDOWS_RESERVED_COMPONENT = /^(?:con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i;
 const WINDOWS_INVALID_COMPONENT = /[<>:"|?*\u0000-\u001f\u007f-\u009f]/;
 
-function inside(candidate: string, root: string): boolean {
-  const child = comparable(candidate);
-  const parent = comparable(root);
-  return child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
-}
 function assertArtifactUrl(value: string, allowedHosts: readonly string[]): URL {
   let url: URL;
   try { url = new URL(value); } catch { throw new Error('SEMANTIC_PROVIDER_ARTIFACT_URL_INVALID'); }

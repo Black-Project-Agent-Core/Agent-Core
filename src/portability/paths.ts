@@ -19,6 +19,13 @@ export function comparablePath(value: string): string {
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
+/** True when `candidate` is `root` or lies below it; both sides are compared through `comparablePath`. */
+export function pathInside(candidate: string, root: string): boolean {
+  const child = comparablePath(candidate);
+  const parent = comparablePath(root);
+  return child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
+}
+
 export function discoverProjectRoot(startPath: string): string | null {
   let current = path.resolve(startPath);
   while (true) {

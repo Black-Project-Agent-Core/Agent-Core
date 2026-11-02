@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { readOnlyGitArgs, readOnlyGitEnv } from '../process/readonly-git.js';
-import { comparablePath as comparable } from '../portability/paths.js';
+import { comparablePath as comparable, pathInside as within } from '../portability/paths.js';
 import { createHash } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -31,12 +31,6 @@ export interface WorkspaceHygieneRecord {
     path: string;
     state: 'present' | 'missing' | 'unreadable';
   }>;
-}
-
-function within(candidate: string, parent: string): boolean {
-  const child = comparable(candidate);
-  const root = comparable(parent);
-  return child === root || child.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
 }
 
 function sanitizeBasename(value: string): string {

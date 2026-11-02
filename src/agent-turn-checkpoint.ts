@@ -1,9 +1,8 @@
-import { createHash } from 'node:crypto';
 import type { AgentCapabilityFamily } from './agent-capability-catalog.js';
 import { validateAgentReasoningEffort, validateAgentProviderModel, validateAnthropicContent, type AgentModelMessage, type AgentModelToolCall } from './agent-provider.js';
 import type { AgentReasoningEffort } from './agent-provider-state.js';
 import { redactSensitiveString, redactSensitiveValue } from './security/redaction.js';
-import { boundedMessages, type AgentCompactionRecord } from './agent-context-compaction.js';
+import { boundedMessages, sha256Digest as digest, type AgentCompactionRecord } from './agent-context-compaction.js';
 import { normalizeMemoryUse, type AgentMemoryUse } from './agent-memory-use.js';
 import { normalizeProposalPromotionBinding, type ProposalPromotionBinding } from './learning/proposal-promotion.js';
 import { nativeMemoryEvaluationSchema, normalizeNativeResultMetadata,
@@ -107,10 +106,6 @@ export interface AgentTurnCheckpointState {
   createdAtMs: number;
   updatedAtMs: number;
   expiresAtMs: number;
-}
-
-function digest(value: string): string {
-  return 'sha256:' + createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
 function safeString(value: unknown, max: number): string {

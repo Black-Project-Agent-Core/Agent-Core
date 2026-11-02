@@ -52,7 +52,8 @@ export function compactionEnabled(env: NodeJS.ProcessEnv = process.env): boolean
   return !/^(0|off|false|no)$/i.test((env.AGENT_CORE_AI_COMPACTION ?? '').trim());
 }
 
-function sha(value: string): string {
+/** `sha256:` plus the hex SHA-256 of the UTF-8 text. */
+export function sha256Digest(value: string): string {
   return 'sha256:' + createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
@@ -187,7 +188,7 @@ export function compactTurnMessages(
 
   const sourceJson = JSON.stringify(segment);
   if (Buffer.byteLength(sourceJson, 'utf8') > MAX_SOURCE_BYTES) return null;
-  const sourceDigest = sha(sourceJson);
+  const sourceDigest = sha256Digest(sourceJson);
   const id = 'cmp-' + sourceDigest.slice(7, 23);
 
   const previous = messages.slice(0, turnStart).filter(isTurnSummary);
@@ -240,7 +241,7 @@ export function summarizeConversationPrefix(
 ): { text: string; record: AgentCompactionRecord } | null {
   if (!older.length && !options.truncatedHead) return null;
   const sourceJson = JSON.stringify(older);
-  const sourceDigest = sha(sourceJson);
+  const sourceDigest = sha256Digest(sourceJson);
   const id = 'cmp-' + sourceDigest.slice(7, 23);
   const lines = older.map(message => (message.role === 'user' ? 'user: ' : 'assistant: ') + flat(message.content, message.role === 'user' ? 400 : 300));
   if (options.truncatedHead) lines.push('(start of a longer message cut from the verbatim window) ' + flat(options.truncatedHead, 300));
