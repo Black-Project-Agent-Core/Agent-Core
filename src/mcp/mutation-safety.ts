@@ -354,9 +354,12 @@ export class McpMutationSafety {
   }
 }
 
-/** Tools that mix reads and writes under one name, with the actions that only read; those calls need no mutation journal. */
+/**
+ * Tools that mix reads and writes under one name, with the actions that only read: no mutation journal, allowed in
+ * Plan mode. `review_outcomes` publishes documents and `propose`/`decide_proposal` record decisions, so they are absent.
+ */
 const READ_ONLY_ACTIONS: Readonly<Record<string, ReadonlySet<string>>> = {
-  skills: new Set(['list', 'inspect', 'search', 'read']),
+  skills: new Set(['status', 'list', 'inspect', 'search', 'read', 'validate', 'list_revisions', 'list_retired', 'proposals', 'self_awareness', 'explain_improvement']),
 };
 
 /** One call, not one tool: a read-only tool, or a read-only action of a mixed tool. Anything unclear counts as a mutation. */

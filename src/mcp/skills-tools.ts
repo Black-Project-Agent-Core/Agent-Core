@@ -5,6 +5,7 @@ import type { ExternalControllerLearningService } from '../learning/external-con
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { currentToolCaller } from '../tracker/tool-invocation.js';
 import { externalControllerToolResult, beginExternalControllerToolCall } from './external-controller-tool-support.js';
+import { isReadOnlyToolCall } from './mutation-safety.js';
 import * as schemas from './skills-schemas.js';
 import type { LearningService } from '../learning/service.js';
 import { PROPOSAL_ACTIONS, runSkillProposalAction } from './skill-proposal-actions.js';
@@ -39,8 +40,6 @@ function markNativeSkills<T extends { name: string }>(items: T[], settings?: Nat
     : { ...item, nativeEnabled: true });
 }
 
-const READ_ONLY_ACTIONS =new Set(['status', 'list', 'inspect', 'search', 'read', 'validate', 'list_revisions', 'list_retired', 'proposals', 'self_awareness', 'explain_improvement']);
-
 export function registerSkillsTools(
   server: McpServer,
   service: SkillService,
@@ -61,6 +60,7 @@ export function registerSkillsTools(
     const call = beginExternalControllerToolCall('skills');
     const started = Date.now();
     const input = schemas.skills.parse(args ?? {});
+    const readOnly = isReadOnlyToolCall('skills', undefined, input);
     try {
       let result: unknown;
       // A registry shared by many Native tasks has no task fixed at registration: the host's caller names it on each call.
@@ -103,7 +103,7 @@ export function registerSkillsTools(
         tool: 'skills',
         args: input,
         result: prepared,
-        readOnly: READ_ONLY_ACTIONS.has(input.action),
+        readOnly,
       });
     } catch (error) {
       activityTracker.record('SKILLS', 'info', 'skills operation failed', 'handled-skills-failure', {
@@ -117,7 +117,7 @@ export function registerSkillsTools(
         tool: 'skills',
         args: input,
         result: { content: [{ type: 'text', text: 'Error: ' + message }], isError: true } as any,
-        readOnly: READ_ONLY_ACTIONS.has(input.action),
+        readOnly,
       });
     }
   });
