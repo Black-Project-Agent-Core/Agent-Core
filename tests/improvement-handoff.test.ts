@@ -53,5 +53,7 @@ describe('proactive improvement handoff through existing Learning', () => {
     expect(bootstrap).toContain(IMPROVEMENT_HANDOFF_CONTRACT);
     expect(bootstrap).toContain('Preserve HOLD and REJECT decisions');
     expect(bootstrap).toContain('deferred Invocate');
+    expect(bootstrap).toContain('This limit applies to unprompted completion reviews only');
+    expect(bootstrap).toContain('including one derived from a study');
   });
 });

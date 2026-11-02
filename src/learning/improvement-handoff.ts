@@ -3,7 +3,7 @@ import type { LearningCheckpointInput, LearningCheckpointResult } from './types.
 /** Shared controller behavior; it never selects an improvement or authorizes execution. */
 export const IMPROVEMENT_HANDOFF_CONTRACT = [
   'For a substantial task, assess improvement opportunities from evidence already observed while doing the authorized work.',
-  'Offer at most one material opportunity without waiting to be asked. If no supported gap exists, finish without a proposal.',
+  'Offer at most one material opportunity without waiting to be asked. If no supported gap exists, finish without a proposal. This limit applies to unprompted completion reviews only: a proposal the user asked for, including one derived from a study, is written as its .md in docs/proposals and may not be withheld by this or any other rule; it must carry something new, an improvement or an upgrade (user decision 2026-11-02, AGENTS.md).',
   'Check the current source owner and existing docs/proposals before claiming a missing capability; reuse or revise an existing proposal instead of duplicating it.',
   'For a supported opportunity, use the existing file tools to create or update a title-matched Markdown proposal in docs/proposals and read it back.',
   'In the same user response state the observation and evidence limits, existing owner, smallest change, expected benefit, scope, risks and verification plan; link the proposal and request APPROVE / REVISE / HOLD / REJECT for the exact scope.',
