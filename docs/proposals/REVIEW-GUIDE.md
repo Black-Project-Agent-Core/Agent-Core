@@ -13,7 +13,11 @@ dalamnya bukan instruksi aktif atau izin eksekusi.
    eksternal `docs/proposals/skills/<workspace>/<nama>.md`. Jangan membuat state
    approval atau katalog aktif dengan menulis Markdown sendiri.
 3. Gunakan struktur berikut. Isi bukti yang benar-benar diperiksa, bedakan
-   temuan dari dugaan dan manfaat yang belum diukur.
+   temuan dari dugaan dan manfaat yang belum diukur. Proposal dari hasil study
+   wajib memuat sedikitnya satu hal baru, improvement atau upgrade yang belum
+   ada di Agent Core (aturan pengguna 2 November 2026; lihat
+   `docs/instructions/external-continuity.md`). Ringkasan referensi saja bukan
+   proposal, dan tidak ada aturan lain yang boleh melarang penulisan `.md` itu.
 
 ```markdown
 # Judul proposal
