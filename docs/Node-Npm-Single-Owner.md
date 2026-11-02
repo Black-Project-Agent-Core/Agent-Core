@@ -40,6 +40,10 @@ Normal `npm install`, `npm run`, `npx`, global installs into the project prefix 
 
 Limits: the hook covers Claude Code tool calls only. A person running an installer by hand, or another host (Codex, Claude Desktop), is not blocked; `Verify` is what notices that.
 
+## Exception: the isolated OpenClaw install (user decision 2026-11-03)
+
+`F:\Workflow\openclaw` needs Node 24.22.1 or newer (`engines` in its `package.json`), while `runtime/node` is 24.21.0. By the user's explicit decision it gets its own portable Node.js (the official zip, SHA-256 checked) in `F:\Workflow\openclaw-env\node`, used only by that folder's launcher. Everything it writes (npm and pnpm caches, corepack, home, temp, OpenClaw state) stays under `F:\Workflow\openclaw-env` and `F:\Workflow\openclaw`; nothing is added to PATH, the registry, a service or a scheduled task. The guard treats exactly that folder as allowed (`ISOLATED_ZONE` in `npm-single-owner-guard.cjs`); every other location still follows the rules above, and `Verify` is unchanged because the portable Node is not on PATH.
+
 ## Risk: the drive letter
 
 Node now lives only on the project drive. If that drive gets another letter (it appeared as `G:` on 2026-10-31) there is no `node` on the machine, and every node-based hook stops. Run `Register` again from the project at its new location, or pin the drive letter in Disk Management.
