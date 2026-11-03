@@ -46,6 +46,9 @@ $profilePaths = @(
     (Join-Path $root 'runtime\webview2')
 )
 $knownOwned = @{}
+$knownExternal = @{}
+# Shells and coding-agent hosts that start MCP servers and brokers with the bundled Node.
+$agentHostNames = @('bash.exe', 'sh.exe', 'codex.exe', 'claude.exe')
 
 function Request-LauncherExit {
     param([string]$Name = 'Local\AgentCoreDesktop.Exit')
@@ -144,12 +147,51 @@ function Test-ProjectProcess($Process) {
         $command.Replace('/', '\').IndexOf($coreEntry, [StringComparison]::OrdinalIgnoreCase) -ge 0)
 }
 
+# A process that is Core itself: the launcher, the tunnel, a runtime helper, a browser profile user, or the Core
+# entry script. Unlike Test-ProjectProcess it does not count every bundled-Node process, so an MCP server that
+# happens to use that Node is not mistaken for a root of Core.
+function Test-CoreRootProcess($Process) {
+    $path = [string]$Process.ExecutablePath
+    $command = [string]$Process.CommandLine
+    if ($path -ieq $exePath -or $path -ieq $tunnelPath) { return $true }
+    foreach ($prefix in $runtimePrefixes) {
+        if ($path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    foreach ($profilePath in $profilePaths) {
+        if ($command.IndexOf($profilePath, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+    }
+    return $command.Replace('/', '\').IndexOf($coreEntry, [StringComparison]::OrdinalIgnoreCase) -ge 0
+}
+
+# A bundled-Node process started by a coding agent through its shell or MCP launcher (the Codex app-server broker,
+# an MCP server such as context-mode) is a client of Core even when its script sits under runtime\npm-prefix, inside
+# this checkout. It never exits on a launcher close, so waiting for it blocks every restart. The decision reads the
+# ancestry in the process snapshot: an ancestor chain that reaches a shell or agent host and never reaches a root of
+# Core is a client. Core's own children always have Core in their ancestry and stay owned; a process whose ancestry
+# cannot be followed (the parent is gone or a reused PID) stays owned, so doubt never hides a Core helper.
+function Test-AgentHostDescendant($Process, $ById) {
+    $current = $Process
+    $sawHost = $false
+    for ($depth = 0; $depth -lt 32; $depth++) {
+        $parent = $ById[[int]$current.ParentProcessId]
+        if ($null -eq $parent) { break }
+        if ($current.CreationDate -and $parent.CreationDate -and $parent.CreationDate -gt $current.CreationDate) { break }
+        if (Test-CoreRootProcess $parent) { return $false }
+        if ($parent.Name -in $agentHostNames) { $sawHost = $true }
+        $current = $parent
+    }
+    return $sawHost
+}
+
 function Get-RestartState {
     $all = @(Get-CimInstance -ClassName Win32_Process -OperationTimeoutSec 10)
     $owned = @()
     $launchers = @()
     $unresolved = @()
     $nextKnownOwned = @{}
+    $nextKnownExternal = @{}
+    $byId = @{}
+    foreach ($row in $all) { $byId[[int]$row.ProcessId] = $row }
     foreach ($item in $all) {
         $processId = [int]$item.ProcessId
         $previous = $script:knownOwned[$processId]
@@ -190,6 +232,16 @@ function Get-RestartState {
             if ($sameKnownProcess) { $nextKnownOwned[$processId] = $previous }
             continue
         }
+        # A client of Core that uses the bundled Node: once seen as one, it stays one for this restart, even if its
+        # parent shell exits meanwhile and its ancestry can no longer be followed.
+        if ($item.Name -ieq 'node.exe' -and -not $sameKnownProcess) {
+            $knownClient = $script:knownExternal[$processId]
+            if (($null -ne $knownClient -and $knownClient.CreationDate -eq $item.CreationDate) -or
+                (Test-AgentHostDescendant $item $byId)) {
+                $nextKnownExternal[$processId] = $item
+                continue
+            }
+        }
         if ($item.Name -ieq 'Agent Core.exe' -and $path -ine $exePath -and
             [int]$item.SessionId -eq $sessionId) {
             throw "Agent Core lain ada di sesi Windows ini (PID $($item.ProcessId)). Tutup sendiri instance tersebut sebelum restart."
@@ -208,6 +260,7 @@ function Get-RestartState {
         }
     }
     $script:knownOwned = $nextKnownOwned
+    $script:knownExternal = $nextKnownExternal
     [pscustomobject]@{ All = $all; Owned = $owned; Launchers = $launchers; Unresolved = $unresolved }
 }
 
