@@ -47,8 +47,8 @@ $profilePaths = @(
 )
 $knownOwned = @{}
 $knownExternal = @{}
-# Shells and coding-agent hosts that start MCP servers and brokers with the bundled Node.
-$agentHostNames = @('bash.exe', 'sh.exe', 'codex.exe', 'claude.exe')
+# Coding-agent hosts that start MCP servers and brokers with the bundled Node.
+$agentHostNames = @('codex.exe', 'claude.exe')
 
 function Request-LauncherExit {
     param([string]$Name = 'Local\AgentCoreDesktop.Exit')
@@ -163,24 +163,32 @@ function Test-CoreRootProcess($Process) {
     return $command.Replace('/', '\').IndexOf($coreEntry, [StringComparison]::OrdinalIgnoreCase) -ge 0
 }
 
-# A bundled-Node process started by a coding agent through its shell or MCP launcher (the Codex app-server broker,
-# an MCP server such as context-mode) is a client of Core even when its script sits under runtime\npm-prefix, inside
-# this checkout. It never exits on a launcher close, so waiting for it blocks every restart. The decision reads the
-# ancestry in the process snapshot: an ancestor chain that reaches a shell or agent host and never reaches a root of
-# Core is a client. Core's own children always have Core in their ancestry and stay owned; a process whose ancestry
-# cannot be followed (the parent is gone or a reused PID) stays owned, so doubt never hides a Core helper.
+# A coding-agent host that is positively not Core: Codex or Claude Code itself, or the bundled Node running a script
+# outside this checkout (the Codex app-server broker is one). A shell alone is not one: Core also starts shells.
+function Test-AgentHostProcess($Process) {
+    if ($Process.Name -in $agentHostNames) { return $true }
+    return ([string]$Process.ExecutablePath -ieq $nodePath -and (Test-ExternalNodeScript ([string]$Process.CommandLine)))
+}
+
+# A bundled-Node process started by a coding agent (the Codex app-server, an MCP server such as context-mode) is a
+# client of Core even when its script sits under runtime\npm-prefix, inside this checkout. It never exits on a
+# launcher close, so waiting for it blocks every restart. The decision reads the ancestry in the process snapshot: a
+# client has a live ancestor that is a coding-agent host and no ancestor that is a root of Core. Core's own children
+# always have Core in their ancestry and stay owned. A process whose ancestry ends without such a host (the parent is
+# gone, a reused PID, a shell whose Core has exited) stays owned, so doubt never hides a Core helper. Residual case: a
+# Codex host that Core itself started and that outlived a Core that was already dead before the restart began.
 function Test-AgentHostDescendant($Process, $ById) {
     $current = $Process
-    $sawHost = $false
+    $anchored = $false
     for ($depth = 0; $depth -lt 32; $depth++) {
         $parent = $ById[[int]$current.ParentProcessId]
         if ($null -eq $parent) { break }
         if ($current.CreationDate -and $parent.CreationDate -and $parent.CreationDate -gt $current.CreationDate) { break }
         if (Test-CoreRootProcess $parent) { return $false }
-        if ($parent.Name -in $agentHostNames) { $sawHost = $true }
+        if (Test-AgentHostProcess $parent) { $anchored = $true }
         $current = $parent
     }
-    return $sawHost
+    return $anchored
 }
 
 function Get-RestartState {
