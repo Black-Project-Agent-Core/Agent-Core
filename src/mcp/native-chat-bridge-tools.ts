@@ -6,12 +6,13 @@ import { resolveModuleProjectRoot } from '../portability/paths.js';
 
 const root = resolveModuleProjectRoot(import.meta.url);
 export const nativeChatBridgeSchema = z.strictObject({
-  action: z.enum(['list', 'read', 'create', 'send', 'cancel']),
+  action: z.enum(['list', 'read', 'create', 'send', 'cancel', 'wait']),
   conversationId: z.string().trim().optional(), turnId: z.string().trim().optional(),
   prompt: z.string().trim().min(1).max(200_000).optional(), clientRequestId: z.string().optional(),
   workspace: z.string().trim().optional(), title: z.string().trim().optional(),
   providerId: z.string().optional(),
   includeArchived: z.boolean().optional(), maxMessages: z.number().int().optional(),
+  statusOnly: z.boolean().optional(), timeoutMs: z.number().int().optional(),
 }).superRefine((value, ctx) => {
   // Keep full admission bounds in one refinement without expanding the 128 KiB tools/list budget.
   for (const [key, max] of [['conversationId', 200], ['turnId', 200], ['clientRequestId', 200],
@@ -22,12 +23,14 @@ export const nativeChatBridgeSchema = z.strictObject({
   }
   if (value.maxMessages !== undefined && (value.maxMessages < 1 || value.maxMessages > 200))
     ctx.addIssue({ code: 'custom', path: ['maxMessages'], message: 'maxMessages must be 1..200' });
+  if (value.timeoutMs !== undefined && (value.timeoutMs < 1000 || value.timeoutMs > 540_000))
+    ctx.addIssue({ code: 'custom', path: ['timeoutMs'], message: 'timeoutMs must be 1000..540000' });
   for (const key of ['conversationId', 'turnId', 'clientRequestId', 'providerId'] as const) {
     const text = value[key];
     if (text !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(text))
       ctx.addIssue({ code: 'custom', path: [key], message: 'invalid identifier' });
   }
-  if (['read', 'send'].includes(value.action) && !value.conversationId)
+  if (['read', 'send', 'wait'].includes(value.action) && !value.conversationId)
     ctx.addIssue({ code: 'custom', path: ['conversationId'], message: 'conversationId required' });
   if (value.action === 'cancel' && !value.turnId)
     ctx.addIssue({ code: 'custom', path: ['turnId'], message: 'turnId required' });
@@ -43,10 +46,12 @@ function result(value: unknown, isError = false) {
 export async function runNativeChatBridge(raw: unknown, host: { env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {}) {
   const input = nativeChatBridgeSchema.parse(raw), env = host.env ?? process.env;
   const args = [path.join(root, 'scripts', 'external', 'native-chat-bridge.mjs'), input.action];
-  if (input.action === 'read' || input.action === 'send') args.push(input.conversationId!);
+  if (input.action === 'read' || input.action === 'send' || input.action === 'wait') args.push(input.conversationId!);
   if (input.action === 'cancel') args.push(input.turnId!);
   if (input.action === 'list' && input.includeArchived) args.push('--archived');
   if (input.action === 'read' && input.maxMessages) args.push('--max-messages', String(input.maxMessages));
+  if (input.action === 'read' && input.statusOnly) args.push('--status');
+  if (input.action === 'wait' && input.timeoutMs) args.push('--timeout-ms', String(input.timeoutMs));
   if (input.action === 'create') {
     if (input.workspace) args.push('--workspace', input.workspace);
     if (input.title) args.push('--title', input.title);

@@ -128,4 +128,74 @@ describe('Native chat CLI result projection', () => {
       await new Promise<void>(resolve => server.close(() => resolve()));
     }
   });
+
+  describe('polling views', () => {
+    const detail = (status: string) => ({
+      conversation: { id: 'fixture-chat', status: 'active', updatedAtMs: 5 },
+      turns: [{ id: 't1', status, iterations: 7, maxIterations: 60, contextTokens: 1234, requestedModel: 'fixture-model',
+        agentProfile: { identity: { name: 'Aibo', avatar: 'data:image/png;base64,' + 'A'.repeat(3000) } } }],
+      messages: [{ id: 'm1', role: 'user', content: 'BRIEF '.repeat(1000) }, { id: 'm2', role: 'assistant', content: 'the reply' }],
+    });
+    async function serve(status: string, run: (invoke: (...args: string[]) => Promise<string>) => Promise<void>) {
+      const server = createServer((_request, response) => {
+        response.setHeader('content-type', 'application/json');
+        response.end(JSON.stringify(detail(status)));
+      });
+      await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+      try {
+        const address = server.address();
+        if (!address || typeof address === 'string') throw new Error('fixture listener unavailable');
+        const env = { SystemRoot: process.env.SystemRoot, AGENT_CORE_UI_TOKEN: 'fixture-token', AGENT_CORE_PORT: String(address.port) };
+        await run(async (...args) => (await execute(process.execPath, [bridge, ...args, ], { env, windowsHide: true, timeout: 8_000 })).stdout);
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>(resolve => server.close(() => resolve()));
+      }
+    }
+
+    it('read --status is a lean view that leaves out the brief, the avatar and a reply still being written', async () => {
+      await serve('running', async invoke => {
+        const out = await invoke('read', 'fixture-chat', '--status');
+        const record = JSON.parse(out);
+        expect(record).toMatchObject({ type: 'status', messageCount: 2,
+          conversation: { id: 'fixture-chat' }, turn: { id: 't1', status: 'running', iterations: 7, maxIterations: 60, contextTokens: 1234 } });
+        expect(record.turn).not.toHaveProperty('agentProfile');
+        expect(record).not.toHaveProperty('reply');
+        expect(out).not.toContain('BRIEF');
+        expect(Buffer.byteLength(out)).toBeLessThan(700);
+      });
+    });
+
+    it('read --status includes the reply once the turn has ended', async () => {
+      await serve('finalized', async invoke => {
+        expect(JSON.parse(await invoke('read', 'fixture-chat', '--status')).reply).toEqual({ id: 'm2', content: 'the reply' });
+      });
+    });
+
+    it('the ordinary read keeps the profile but no longer carries the inline avatar', async () => {
+      await serve('running', async invoke => {
+        const out = await invoke('read', 'fixture-chat');
+        expect(out).toContain('Aibo');
+        expect(out).toContain('BRIEF');
+        expect(out).not.toContain('base64');
+      });
+    });
+
+    it('wait answers at once for an ended turn and reports waiting at the timeout for a running one', async () => {
+      await serve('finalized', async invoke => {
+        expect(JSON.parse(await invoke('wait', 'fixture-chat'))).toMatchObject({ type: 'status', waiting: false, turn: { status: 'finalized' } });
+      });
+      await serve('running', async invoke => {
+        const started = Date.now();
+        expect(JSON.parse(await invoke('wait', 'fixture-chat', '--timeout-ms', '1000'))).toMatchObject({ type: 'status', waiting: true, turn: { status: 'running' } });
+        expect(Date.now() - started).toBeLessThan(4_000);
+      });
+    });
+
+    it('wait refuses a timeout outside 1000..540000', async () => {
+      await serve('running', async invoke => {
+        await expect(invoke('wait', 'fixture-chat', '--timeout-ms', '10')).rejects.toMatchObject({ stdout: expect.stringContaining('timeout-ms must be') });
+      });
+    });
+  });
 });

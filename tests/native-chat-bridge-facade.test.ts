@@ -57,6 +57,24 @@ describe('external Native chat MCP facade', () => {
       expect(response.status).toBe(400); expect(turns).toHaveLength(1);
     } finally { await f.close(); }
   });
+  it('offers a lean polling read and a bounded wait through the facade', async () => {
+    expect(nativeChatBridgeSchema.safeParse({ action: 'wait', conversationId, timeoutMs: 999 }).success).toBe(false);
+    expect(nativeChatBridgeSchema.safeParse({ action: 'wait', conversationId, timeoutMs: 540_001 }).success).toBe(false);
+    expect(nativeChatBridgeSchema.safeParse({ action: 'wait' }).success).toBe(false);
+    const f = await backend((_request, response) => {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({ conversation: { id: conversationId, status: 'active' },
+        turns: [{ id: 't', status: 'finalized' }], messages: [{ id: 'a', role: 'assistant', content: 'done' }] }));
+    });
+    try {
+      const waited = await runNativeChatBridge({ action: 'wait', conversationId, timeoutMs: 1000 }, { env: f.env });
+      expect(waited.isError).toBeUndefined();
+      expect(JSON.parse(waited.content[0]!.text).records[0]).toMatchObject({ type: 'status', waiting: false, reply: { content: 'done' } });
+      const status = await runNativeChatBridge({ action: 'read', conversationId, statusOnly: true }, { env: f.env });
+      expect(JSON.parse(status.content[0]!.text).records[0]).toMatchObject({ type: 'status', messageCount: 1 });
+    } finally { await f.close(); }
+  });
+
   it('registers only externally and requires an explicit send idempotency key', () => {
     const names: string[] = [];
     const server = { registerTool(name: string) { names.push(name); } };

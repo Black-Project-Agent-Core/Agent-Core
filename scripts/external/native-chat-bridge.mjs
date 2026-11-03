@@ -14,6 +14,7 @@ const MAX_HTTP_BYTES=4*1024*1024;
 const MAX_STREAM_LINE_BYTES=1024*1024;
 const MAX_RECORD_BYTES=128*1024;
 const MAX_OUTPUT_BYTES=512*1024;
+const WAIT_POLL_MS=5000;
 let outputBytes=0;
 
 function sanitize(text){
@@ -41,7 +42,7 @@ function parseArgs(argv){
     const value=argv[i];
     if(!value.startsWith('--')){positionals.push(value);continue;}
     const key=value.slice(2),next=argv[i+1];
-    if(['stdin','archived','help'].includes(key)){options[key]=true;continue;}
+    if(['stdin','archived','help','status'].includes(key)){options[key]=true;continue;}
     if(next!==undefined){options[key]=next;i++;}else options[key]=true;
   }
   return {positionals,options};
@@ -88,13 +89,33 @@ async function boundedResponseText(response){
     return text+decoder.decode();
   }finally{await reader.cancel().catch(()=>undefined);reader.releaseLock();}
 }
+// The profile avatar is an inline image the controller never needs; it made every read about 2.5 KB larger.
+function withoutAvatar(turn){
+  const identity=turn?.agentProfile?.identity;
+  if(typeof identity?.avatar!=='string')return turn;
+  const {avatar:_avatar,...rest}=identity;
+  return {...turn,agentProfile:{...turn.agentProfile,identity:rest}};
+}
 function projectDetail(detail,maxMessages=50){
   return {
     conversation:detail.conversation,
-    turns:Array.isArray(detail.turns)?detail.turns.slice(-maxMessages):[],
+    turns:Array.isArray(detail.turns)?detail.turns.slice(-maxMessages).map(withoutAvatar):[],
     messages:Array.isArray(detail.messages)?detail.messages.slice(-maxMessages)
       .map(item=>({...item,content:clip(item.content)})):[],
   };
+}
+// Polling view: the newest turn's small scalar fields (status, iterations, tokens, times) and the message count.
+// The brief and the reply are left out while the turn runs; the reply is included once it has ended.
+function projectStatus(detail){
+  const turns=Array.isArray(detail.turns)?detail.turns:[],messages=Array.isArray(detail.messages)?detail.messages:[];
+  const last=turns[turns.length-1];
+  const turn=last&&Object.fromEntries(Object.entries(last).filter(([,value])=>
+    typeof value==='number'||typeof value==='boolean'||(typeof value==='string'&&value.length<=200)));
+  const reply=turn?.status==='running'?undefined:[...messages].reverse().find(item=>item.role==='assistant');
+  const conversation=detail.conversation??{};
+  return {conversation:{id:conversation.id,status:conversation.status,updatedAtMs:conversation.updatedAtMs},
+    messageCount:messages.length,...(turn?{turn}:{}),
+    ...(reply?{reply:{id:reply.id,turnId:reply.turnId,content:clip(reply.content)}}:{})};
 }
 
 function projectEvent(event){
@@ -203,7 +224,8 @@ async function sendTurn(conversationId,prompt,clientRequestId,evaluation,provide
 function usage(){
   return [
     'Usage: native-chat-bridge.mjs list [--archived]',
-    '       native-chat-bridge.mjs read <conversationId> [--max-messages N]',
+    '       native-chat-bridge.mjs read <conversationId> [--max-messages N | --status]',
+    '       native-chat-bridge.mjs wait <conversationId> [--timeout-ms 1000..540000]',
     '       native-chat-bridge.mjs create [--workspace name] [--title title]',
 
     '       native-chat-bridge.mjs send <conversationId> --prompt text [--client-request-id id] [--provider id [--model id]]',
@@ -227,7 +249,21 @@ async function main(){
     const max=Number.parseInt(String(options['max-messages']??'50'),10);
     if(!Number.isSafeInteger(max)||max<1||max>200)throw new Error('max-messages must be 1..200');
     const result=await requestJson('GET',`/agent/chat/conversations/${encodeURIComponent(id)}`);
-    emit({type:'conversation',...projectDetail(result,max)});
+    emit(options.status===true?{type:'status',...projectStatus(result)}:{type:'conversation',...projectDetail(result,max)});
+    return;
+  }
+  if(command==='wait'){
+    if(!id)throw new Error('conversationId is required');
+    const timeout=Number.parseInt(String(options['timeout-ms']??'45000'),10);
+    if(!Number.isSafeInteger(timeout)||timeout<1000||timeout>540_000)throw new Error('timeout-ms must be 1000..540000');
+    const deadline=Date.now()+timeout;
+    let status;
+    for(;;){
+      status=projectStatus(await requestJson('GET',`/agent/chat/conversations/${encodeURIComponent(id)}`));
+      if(status.turn?.status!=='running'||Date.now()+WAIT_POLL_MS>deadline)break;
+      await new Promise(resolve=>setTimeout(resolve,WAIT_POLL_MS));
+    }
+    emit({type:'status',waiting:status.turn?.status==='running',...status});
     return;
   }
   if(command==='create'){
