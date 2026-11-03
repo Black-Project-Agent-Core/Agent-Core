@@ -1,7 +1,7 @@
 # Penglihatan Native Agent Core
 Tanggal: 2026-10-30
 Revisi: 1
-Status: APPROVED (revisi 1, scope V1+V2+V5 build; belum diimplementasikan)
+Status: APPROVED (revisi 1, scope V1+V2+V5 build; sebagian diimplementasikan 2026-11-03: gambar tool di rute Anthropic, V5 akuntansi dan saklar; V1 rute non-Anthropic dan verifikasi hidup masih OPEN)
 Jenis: Improvement
 Asal dan bukti: `src/agent-provider.ts:49` dan `:86`, `src/agent-tool-session.ts:183`, `src/mcp/result-budget.ts:14` dan `:207`, `src/agent-provider-readiness.ts:223`, pesan pengguna 2026-10-30.
 
@@ -57,6 +57,16 @@ Harapan, belum terukur: Native dapat membaca teks pada tangkapan layar, memeriks
 ## Riwayat revisi
 
 - Revisi 1 (2026-10-30): dokumen pertama.
+
+## Kemajuan implementasi (2026-11-03)
+
+Dicatat tanpa mengubah scope revisi 1.
+
+- Sudah ada di kode sebelum tanggal ini: V2 untuk rute Anthropic (`toolImages()` di `src/agent-tool-session.ts`, `AgentModelMessage.images`, `keepRecentImages`, `withoutImages`).
+- Selesai 2026-11-03 (V5): satu gambar dihitung sebagai estimasi tetap `IMAGE_TOKEN_ESTIMATE = 3_300` token, bukan sebagai panjang base64-nya. Cacat yang diperbaiki: `contextBytes` menyerialkan seluruh pesan sehingga base64 gambar terhitung sebagai byte konteks dan menaikkan `upperBoundTokens` (risiko `MODEL_CONTEXT_INSUFFICIENT` palsu). Kini `contextBytes`, `contextBytesBySource`, `accountContext`, `completionCap` dan `messageChars` (`agent-context-usage.ts`) memakai estimasi tetap; permintaan tanpa gambar byte-identik; rasio terobservasi di `agent-provider.ts` memakai token masukan dikurangi token gambar. Estimasi itu batas atas untuk akuntansi, bukan tagihan.
+- Selesai 2026-11-03 (saklar): `AGENT_CORE_NATIVE_VISION=off` dibaca saat panggilan; gambar dibuang dan teks hasil tool menyebut bahwa gambar dimatikan.
+- Bukti: `tests/native-image-accounting.test.ts` 7 dari 7 lolos dan build exit 0, dijalankan di sesi Native.
+- OPEN: V1 untuk rute non-Anthropic (pencatatan `image` pada `input_modalities`, bentuk wire per provider) ditunda sampai ada rute non-Anthropic aktif yang terbukti mengumumkan gambar; belum diperiksa. Gambar langsung di pesan pengguna tetap di luar yang dibangun. Verifikasi hidup (`image_inspect` pada PNG buatan sendiri, Native membacakan teksnya) menunggu build dan restart Core. Manfaat akurasi belum diukur.
 
 ## Keputusan pengguna dan scope
 

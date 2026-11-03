@@ -4,6 +4,8 @@ import type { AgentModelMessage, AgentModelTool } from './agent-provider.js';
 export const OUTPUT_RESERVE_TOKENS = 1_024;
 /** Typical English/code ratio, used only for estimates and triggers, never to admit a request. */
 const TYPICAL_BYTES_PER_TOKEN = 4;
+/** Upper bound for one picture (about 1568 x 1568 / 750 tokens): an accounting estimate dated 2026-11-02, not an invoice. */
+export const IMAGE_TOKEN_ESTIMATE = 3_300;
 export const AUTOMATIC_CONTEXT_MAX_BYTES = 48 * 1024;
 export const AUTOMATIC_CONTEXT_PART_BYTES = 8 * 1024;
 
@@ -38,9 +40,9 @@ export interface ObservedContextUsage {
 }
 
 export interface ContextAccounting {
-  /** UTF-8 bytes of the request body parts that carry context: messages and tool schemas. */
+  /** UTF-8 bytes of the request body parts that carry context: messages and tool schemas. Picture payloads are not part of it. */
   bytes: number;
-  /** Hard bound: a token spans at least one byte, so tokens never exceed bytes. Any tokenizer. */
+  /** Hard bound: a token spans at least one byte, so text tokens never exceed bytes, plus a fixed estimate per picture. Any tokenizer. */
   upperBoundTokens: number;
   /** Best guess for triggers and diagnostics. Never used to admit a request the bound refuses. */
   estimatedTokens: number;
@@ -52,16 +54,35 @@ export interface ContextAccounting {
   requiredTokens: number;
 }
 
+/** Number of pictures carried by the messages. */
+export function pictureCount(messages: AgentModelMessage[]): number {
+  return messages.reduce((sum, message) => sum + (message.images?.length ?? 0), 0);
+}
+
+/** Fixed token estimate for all pictures in the messages; their base64 text is never counted as context bytes. */
+export function pictureTokens(messages: AgentModelMessage[]): number {
+  return pictureCount(messages) * IMAGE_TOKEN_ESTIMATE;
+}
+
+/** The messages as measured for text bytes: picture payloads left out. Strips only message `images`, never a tool schema property of that name. */
+function withoutPictures(messages: AgentModelMessage[]): AgentModelMessage[] {
+  return pictureCount(messages) > 0 ? messages.map(({ images: _images, ...rest }) => rest) : messages;
+}
+
 export function contextBytes(messages: AgentModelMessage[], tools: AgentModelTool[]): number {
-  return Buffer.byteLength(JSON.stringify({ messages, tools }), 'utf8');
+  return Buffer.byteLength(JSON.stringify({ messages: withoutPictures(messages), tools }), 'utf8');
 }
 
 export type ContextSource = 'system' | 'user' | 'assistant' | 'tool' | 'tools';
 
-/** Where the bytes of a request come from: one entry per message role plus the tool schemas. Measures only. */
+/** Where the bytes of a request come from: one entry per message role plus the tool schemas. Measures only. Each picture counts as its fixed token estimate, in bytes. */
 export function contextBytesBySource(messages: AgentModelMessage[], tools: AgentModelTool[]): Record<ContextSource, number> {
   const bySource: Record<ContextSource, number> = { system: 0, user: 0, assistant: 0, tool: 0, tools: 0 };
-  for (const message of messages) bySource[message.role] += Buffer.byteLength(JSON.stringify(message), 'utf8');
+  for (const message of messages) {
+    const [text] = withoutPictures([message]);
+    bySource[message.role] += Buffer.byteLength(JSON.stringify(text), 'utf8')
+      + pictureCount([message]) * IMAGE_TOKEN_ESTIMATE * TYPICAL_BYTES_PER_TOKEN;
+  }
   bySource.tools = Buffer.byteLength(JSON.stringify(tools), 'utf8');
   return bySource;
 }
@@ -78,16 +99,18 @@ export function accountContext(
   const bytes = options.bytes ?? contextBytes(messages, tools);
   const observed = options.observed && options.observed.inputTokens > 0 && options.observed.bytes > 0
     ? options.observed : undefined;
-  const upperBoundTokens = bytes;
-  // An observed ratio only ever tightens the estimate toward the bound; it cannot exceed the bound.
-  const estimate = observed
+  const pictures = pictureTokens(messages);
+  // Each picture adds a fixed estimate to the bound and to the estimate; `bytes` stays text-only.
+  const upperBoundTokens = bytes + pictures;
+  // An observed ratio only ever tightens the text estimate toward the bound; it cannot exceed the bound.
+  const textEstimate = observed
     ? Math.ceil(bytes * observed.inputTokens / observed.bytes)
     : Math.ceil(bytes / TYPICAL_BYTES_PER_TOKEN);
   const outputReserve = Math.min(OUTPUT_RESERVE_TOKENS, options.maxOutputTokens ?? OUTPUT_RESERVE_TOKENS);
   return {
     bytes,
     upperBoundTokens,
-    estimatedTokens: Math.max(1, Math.min(estimate, upperBoundTokens)),
+    estimatedTokens: Math.max(1, Math.min(textEstimate + pictures, upperBoundTokens)),
     method: observed ? 'observed-ratio' : 'bytes-per-4',
     confidence: observed ? 'calibrated' : 'heuristic',
     ...(observed ? { observed } : {}),
@@ -104,10 +127,10 @@ export function contextRefusal(accounting: ContextAccounting, contextWindowToken
     + ';estimate=' + accounting.estimatedTokens + '/' + accounting.method + ')';
 }
 
-/** Completion cap that keeps input bytes plus output inside the window (conservative bound). */
+/** Completion cap that keeps the input bound (text bytes plus the fixed picture estimates) plus output inside the window (conservative bound). */
 export function completionCap(
   accounting: ContextAccounting,
   capacity: { contextWindowTokens: number; maxOutputTokens: number },
 ): number {
-  return Math.min(capacity.maxOutputTokens, capacity.contextWindowTokens - accounting.bytes);
+  return Math.min(capacity.maxOutputTokens, capacity.contextWindowTokens - accounting.upperBoundTokens);
 }

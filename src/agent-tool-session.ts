@@ -21,6 +21,8 @@ const MAX_TOOL_IMAGES = 3;
 // Anthropic accepts up to 5 MB per image; stay under it and keep one result from filling the context.
 const MAX_TOOL_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TOOL_IMAGES_TOTAL_BYTES = 8 * 1024 * 1024;
+/** Rollback switch, read at call time: AGENT_CORE_NATIVE_VISION=off keeps tool pictures from the model. */
+const visionEnabled = () => (process.env.AGENT_CORE_NATIVE_VISION ?? '').trim().toLowerCase() !== 'off';
 
 /** The supported pictures in an MCP tool result, bounded in number and size. Anything else is left out. */
 export function toolImages(result: any): AgentModelImage[] {
@@ -325,11 +327,12 @@ export class AgentRuntimeToolSession {
     if (admissionIssue) throw new Error(admissionIssue);
     if (signal?.aborted) throw new Error('AGENT_RUNTIME_TURN_STOPPED');
     const raw: any = await this.port.callTool(name, args, { ...(signal ? { signal } : {}), ...(invocationId ? { invocationId } : {}) });
-    const images = raw?.isError === true ? [] : toolImages(raw);
+    const pictures = raw?.isError === true ? [] : toolImages(raw);
+    const images = visionEnabled() ? pictures : [];
     return {
       name,
       isError: raw?.isError === true,
-      text: toolText(raw),
+      text: toolText(raw) + (pictures.length && !images.length ? '\n[A picture was returned but picture viewing is switched off (AGENT_CORE_NATIVE_VISION=off).]' : ''),
       ...(images.length ? { images } : {}),
       raw,
     };

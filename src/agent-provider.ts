@@ -37,7 +37,7 @@ export function validateAgentProviderModel(value: unknown, routeId?: string, sup
   if (supported && !supported.includes(value)) throw new Error('AGENT_CHAT_MODEL_UNAVAILABLE');
 }
 import {
-  accountContext, completionCap, contextBytes, contextRefusal, type ContextAccounting, type ObservedContextUsage,
+  accountContext, completionCap, contextBytes, contextRefusal, pictureTokens, type ContextAccounting, type ObservedContextUsage,
 } from './agent-context-accounting.js';
 
 export interface AgentProviderCredentialConfig {
@@ -1248,7 +1248,9 @@ export class OpenAICompatibleProviderPool {
               } });
             await emitStream({ type: 'end', id: streamId });
             if (response.usage?.inputTokens) {
-              this.observedInput.set(observedKey, { inputTokens: response.usage.inputTokens, bytes: wireBytes });
+              // Provider input tokens include the real picture tokens, while wireBytes is text-only: observe the text tokens.
+              const textTokens = response.usage.inputTokens - pictureTokens(messages);
+              if (textTokens > 0) this.observedInput.set(observedKey, { inputTokens: textTokens, bytes: wireBytes });
             }
             this.scheduler.recordSuccess(selected.selection);
             await emitRouting({ type: 'success', attempt: attemptNumber, key: attemptKey(effectiveModel) });

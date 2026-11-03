@@ -1,4 +1,5 @@
 import type { AgentModelMessage } from './agent-provider.js';
+import { IMAGE_TOKEN_ESTIMATE } from './agent-context-accounting.js';
 
 /**
  * Size of the prompt the provider just received, from that ONE call's usage.
@@ -39,13 +40,15 @@ export interface ContextBreakdownOptions {
 export const CHARS_PER_TOKEN = 4;
 
 function messageChars(message: AgentModelMessage): number {
+  // A picture counts as a fixed token estimate (in chars), never as the length of its base64 text.
+  const pictureChars = (message.images?.length ?? 0) * IMAGE_TOKEN_ESTIMATE * CHARS_PER_TOKEN;
   // What the provider actually receives for an assistant turn with Anthropic content (text/tool_use/thinking blocks),
   // not the OpenAI-shape content + tool_calls mirror kept for the rest of the pipeline.
-  if (message.role === 'assistant' && message.anthropicContent) return JSON.stringify(message.anthropicContent).length;
+  if (message.role === 'assistant' && message.anthropicContent) return JSON.stringify(message.anthropicContent).length + pictureChars;
   const content = (message as { content?: unknown }).content;
   const toolCalls = (message as { tool_calls?: unknown }).tool_calls;
   const contentChars = typeof content === 'string' ? content.length : JSON.stringify(content ?? '').length;
-  return contentChars + (toolCalls ? JSON.stringify(toolCalls).length : 0);
+  return contentChars + (toolCalls ? JSON.stringify(toolCalls).length : 0) + pictureChars;
 }
 
 function toolsChars(tools: unknown): number {
