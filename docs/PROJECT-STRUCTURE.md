@@ -466,7 +466,7 @@ Contoh intent untuk tujuan baru yang benar-benar diperlukan task: `{"path":"docs
 
 <!-- DIRECTORY-SNAPSHOT:START -->
 
-Daftar otomatis: **450 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
+Daftar otomatis: **407 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. State instalasi hidup (`dist`, `.grafel`, `.rdc-standalone`, state di `runtime/*`) tidak dicantumkan agar daftar sama di Source dan Platform. Jangan edit blok ini; gunakan `npm run structure:sync`.
 
 ```text
 <PROJECT_ROOT>/
@@ -507,10 +507,8 @@ Daftar otomatis: **450 direktori/boundary**. Subtree privat, dependency, generat
 |-- .git/  [metadata Git; tidak ditelusuri]
 |-- .github/
 |   `-- ISSUE_TEMPLATE/
-|-- .grafel/  [state/index lokal; tidak ditelusuri]
 |-- .handoff/
 |-- .impeccable/
-|-- .rdc-standalone/  [tool operator eksternal; tidak ditelusuri]
 |-- .recall/
 |-- .remember/
 |   |-- logs/
@@ -520,7 +518,6 @@ Daftar otomatis: **450 direktori/boundary**. Subtree privat, dependency, generat
 |-- .superpowers/  [state host lokal; tidak ditelusuri]
 |-- assets/
 |-- Backups/  [backup existing; tidak ditelusuri]
-|-- dist/  [hasil build; tidak ditelusuri]
 |-- DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/  [terlindungi; tidak ditelusuri]
 |-- docs/
 |   |-- agent-core/
@@ -567,127 +564,88 @@ Daftar otomatis: **450 direktori/boundary**. Subtree privat, dependency, generat
 |-- node_modules/  [dependency; tidak ditelusuri]
 |-- release/  [arsip rilis; tidak ditelusuri]
 |-- runtime/
-|   |-- agent/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- agent-runtime/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- android/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- backups/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- bridge-auth/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- browser-control/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- build/  [dependency/output/profile; tidak ditelusuri]
-|   |-- cache/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- checkpoints/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- data/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- dotnet-home/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- dotnet-sdk/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- downloads/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- grafel/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- home/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- launcher/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- learning/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- mcp/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- memory/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- native-dump-test-temp+/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- node/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- npm-cache/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- npm-prefix/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- nuget-http-cache/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- nuget-packages/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- phone/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- playwright/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- portability/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- rdc/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- restart/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- semantic-ide/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- semantic-ide-smoke/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- skills/
-|   |   |-- .staging/  [artifact/state SkillService; lihat pola role]
-|   |   |-- capability-packs/
-|   |   |   |-- agent-core-capability-index/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- api-and-interface-design/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- app-replica/
-|   |   |   |   `-- references/
-|   |   |   |       `-- kit/
-|   |   |   |-- code-review-and-quality/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- constraint-driven-development/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- context-engineering/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- debugging-and-observability/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- delivery-and-release/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- deprecation-and-migration/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- documentation-and-adrs/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- doubt-driven-development/
-|   |   |   |   `-- references/
-|   |   |   |       |-- upstream-agents/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- frontend-and-browser-testing/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- git-workflow-and-versioning/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- incremental-implementation/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- mind-control/
-|   |   |   |   |-- evals/
-|   |   |   |   `-- references/
-|   |   |   |-- performance-oriented-software-engineering/
-|   |   |   |   |-- agents/
-|   |   |   |   |-- references/
-|   |   |   |   |   `-- upstream-shared/
-|   |   |   |   `-- scripts/
-|   |   |   |-- requirements-and-planning/
-|   |   |   |   `-- references/
-|   |   |   |       |-- kit/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- reverse-engineer-anything/
-|   |   |   |   |-- agents/
-|   |   |   |   |-- references/
-|   |   |   |   |-- scripts/
-|   |   |   |   `-- tooling/
-|   |   |   |       `-- rea/
-|   |   |   |-- security-and-hardening/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- skill-authoring/
-|   |   |   |   `-- references/
-|   |   |   |-- source-driven-development/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- test-driven-development/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   `-- windows-powershell-host/
-|   |   |-- catalog/  [artifact/state SkillService; lihat pola role]
-|   |   |-- exports/  [artifact/state SkillService; lihat pola role]
-|   |   |-- packages/  [artifact/state SkillService; lihat pola role]
-|   |   |-- proposals/  [artifact/state SkillService; lihat pola role]
-|   |   |-- revisions/  [artifact/state SkillService; lihat pola role]
-|   |   `-- tooling/  [artifact/state SkillService; lihat pola role]
-|   |-- terminal-output/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- test-desktop-status/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- tmp/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- tool-results/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- tools/  [state/tooling/output existing; tidak ditelusuri]
-|   |-- tracker/  [state/tooling/output existing; tidak ditelusuri]
-|   `-- webview2/  [state/tooling/output existing; tidak ditelusuri]
+|   `-- skills/
+|       |-- .staging/  [artifact/state SkillService; lihat pola role]
+|       |-- capability-packs/
+|       |   |-- agent-core-capability-index/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- api-and-interface-design/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- app-replica/
+|       |   |   `-- references/
+|       |   |       `-- kit/
+|       |   |-- code-review-and-quality/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- constraint-driven-development/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- context-engineering/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- debugging-and-observability/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- delivery-and-release/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- deprecation-and-migration/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- documentation-and-adrs/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- doubt-driven-development/
+|       |   |   `-- references/
+|       |   |       |-- upstream-agents/
+|       |   |       `-- upstream-shared/
+|       |   |-- frontend-and-browser-testing/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- git-workflow-and-versioning/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- incremental-implementation/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- mind-control/
+|       |   |   |-- evals/
+|       |   |   `-- references/
+|       |   |-- performance-oriented-software-engineering/
+|       |   |   |-- agents/
+|       |   |   |-- references/
+|       |   |   |   `-- upstream-shared/
+|       |   |   `-- scripts/
+|       |   |-- requirements-and-planning/
+|       |   |   `-- references/
+|       |   |       |-- kit/
+|       |   |       `-- upstream-shared/
+|       |   |-- reverse-engineer-anything/
+|       |   |   |-- agents/
+|       |   |   |-- references/
+|       |   |   |-- scripts/
+|       |   |   `-- tooling/
+|       |   |       `-- rea/
+|       |   |-- security-and-hardening/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- skill-authoring/
+|       |   |   `-- references/
+|       |   |-- source-driven-development/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   |-- test-driven-development/
+|       |   |   `-- references/
+|       |   |       `-- upstream-shared/
+|       |   `-- windows-powershell-host/
+|       |-- catalog/  [artifact/state SkillService; lihat pola role]
+|       |-- exports/  [artifact/state SkillService; lihat pola role]
+|       |-- packages/  [artifact/state SkillService; lihat pola role]
+|       |-- proposals/  [artifact/state SkillService; lihat pola role]
+|       |-- revisions/  [artifact/state SkillService; lihat pola role]
+|       `-- tooling/  [artifact/state SkillService; lihat pola role]
 |-- scripts/
 |   |-- browser-control/
 |   |-- external/
@@ -704,7 +662,6 @@ Daftar otomatis: **450 direktori/boundary**. Subtree privat, dependency, generat
 |   |-- tunnel/
 |   |-- verify/
 |   `-- windows/
-|-- secrets/  [terlindungi; tidak ditelusuri]
 |-- src/
 |   |-- artifact-analysis/
 |   |-- assets/

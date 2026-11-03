@@ -105,15 +105,20 @@ function boundary(relative: string, name: string, link: boolean): string {
   if (relative.startsWith('SubProject/') && name === 'runtime') return 'runtime subproyek; tidak ditelusuri';
   return '';
 }
+// Live install state exists only where Agent Core runs (Platform), never in the git Source tree. Leaving it out keeps the snapshot identical in both.
+const INSTALL_STATE_ROOTS = new Set(['.grafel', '.rdc-standalone', 'dist']);
+const installState = (relative: string, label: string) => INSTALL_STATE_ROOTS.has(relative) || label === 'state/tooling/output existing; tidak ditelusuri';
 async function collect(root: string, incoming?: { source: string; destination: string }): Promise<Directory[]> {
   const result: Directory[] = [];
   async function walk(current: string, relative: string, prefix: string, depth: number) {
     if (depth > 64) return fail('directory depth limit');
     const info = await lstat(current);
     if (!info.isDirectory() || info.isSymbolicLink()) return fail('directory changed during inspection: ' + relative);
-    const entries = (await readdir(current, { withFileTypes: true })).filter(entry =>
-      (entry.isDirectory() || entry.isSymbolicLink()) && path.posix.join(relative, entry.name) !== LOCK
-    ).sort((a, b) => a.name.localeCompare(b.name));
+    const entries = (await readdir(current, { withFileTypes: true })).filter(entry => {
+      const child = path.posix.join(relative, entry.name);
+      return (entry.isDirectory() || entry.isSymbolicLink()) && child !== LOCK
+        && !installState(child, boundary(child, entry.name, entry.isSymbolicLink()));
+    }).sort((a, b) => a.name.localeCompare(b.name));
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i], child = path.posix.join(relative, entry.name);
       const label = boundary(child, entry.name, entry.isSymbolicLink()), last = i === entries.length - 1;
@@ -145,7 +150,7 @@ function placementIssue(policy: Policy, relative: string, known: Iterable<string
   return undefined;
 }
 function render(directories: Directory[]): string {
-  return '\n\nDaftar otomatis: **' + directories.length + ' direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.\n\n```text\n<PROJECT_ROOT>/\n'
+  return '\n\nDaftar otomatis: **' + directories.length + ' direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. State instalasi hidup (`dist`, `.grafel`, `.rdc-standalone`, state di `runtime/*`) tidak dicantumkan agar daftar sama di Source dan Platform. Jangan edit blok ini; gunakan `npm run structure:sync`.\n\n```text\n<PROJECT_ROOT>/\n'
     + directories.map(row => row.prefix + (row.last ? '`-- ' : '|-- ') + path.posix.basename(row.path) + '/' + (row.label ? '  [' + row.label + ']' : '')).join('\n')
     + '\n```\n\n';
 }
