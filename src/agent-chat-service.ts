@@ -96,8 +96,33 @@ function isRunningTaskConflict(error: unknown): boolean {
   return error instanceof Error && error.message === 'AGENT_RUNTIME_SESSION_HAS_RUNNING_TASK';
 }
 
-/** How long a user-facing path (turn end, send, archive) waits for a task settle before it moves on. */
+/**
+ * How long a user-facing path (turn end, send, archive) waits for a task settle before it moves on. At the end of a
+ * turn it bounds the finalization that follows the terminal write; the sweep before a send or an archive bounds the
+ * whole settle.
+ */
 const SETTLE_WAIT_MS = 10_000;
+
+/**
+ * How long the end of a turn waits for the terminal write of a task: reading the task and markTerminal, which syncs
+ * to disk. It is a bound of its own so that a short finalization bound can never cut the write short; the production
+ * value is the same as SETTLE_WAIT_MS.
+ */
+const SETTLE_TERMINAL_WAIT_MS = SETTLE_WAIT_MS;
+
+/** The two milestones of one task settle, shared by every caller that races for the task. Neither promise rejects. */
+interface TaskSettle {
+  /**
+   * Settles when the terminal write is over: true when this settle ended the task, false when the task was not
+   * running, the race to end it was lost, or the write failed.
+   */
+  readonly terminal: Promise<boolean>;
+  /**
+   * Settles when the whole settle is over: true when this settle ended the task and then attempted its
+   * finalization.
+   */
+  readonly done: Promise<boolean>;
+}
 
 /** Waits for a promise at most `ms`; the work keeps running and later callers can still join it. */
 async function waitAtMost<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
@@ -154,8 +179,9 @@ export class AgentChatService {
   /** Manual "compact now" requests; consumed once by the controller at its next iteration. */
   private readonly compactionRequestedTurns = new Set<string>();
   /** One settle per runtime task, shared by every caller that races for it. */
-  private readonly settlingTasks = new Map<string, Promise<boolean>>();
+  private readonly settlingTasks = new Map<string, TaskSettle>();
   private settleWaitMs = SETTLE_WAIT_MS;
+  private settleTerminalWaitMs = SETTLE_TERMINAL_WAIT_MS;
   private readonly providerWaitTimers = new Map<string, NodeJS.Timeout>();
   private automaticRecoveryPaused = false;
 
@@ -1055,19 +1081,31 @@ export class AgentChatService {
    * This reuses the existing terminal and finalization path and never selects a turn that may still resume.
    */
   private settleEndedTurnTask(turnId: string, runtimeTaskId: string): Promise<boolean> {
-    if (this.activeTurns.has(turnId)) return Promise.resolve(false);
+    return this.joinOrStartTaskSettle(turnId, runtimeTaskId)?.done ?? Promise.resolve(false);
+  }
+
+  /** Null while the turn still has an executor; otherwise the settle of its task, started now or already in flight. */
+  private joinOrStartTaskSettle(turnId: string, runtimeTaskId: string): TaskSettle | null {
+    if (this.activeTurns.has(turnId)) return null;
     // A stop, an unwinding executor, a send and an archive can all arrive for the same task; they share one settle.
     const inFlight = this.settlingTasks.get(runtimeTaskId);
     if (inFlight) return inFlight;
-    const settling: Promise<boolean> = this.settleTaskOnce(runtimeTaskId).finally(() => {
-      if (this.settlingTasks.get(runtimeTaskId) === settling) this.settlingTasks.delete(runtimeTaskId);
+    let terminalReached!: (ended: boolean) => void;
+    const terminal = new Promise<boolean>(resolve => { terminalReached = resolve; });
+    const done: Promise<boolean> = this.settleTaskOnce(runtimeTaskId, terminalReached).finally(() => {
+      if (this.settlingTasks.get(runtimeTaskId) === settle) this.settlingTasks.delete(runtimeTaskId);
     });
-    this.settlingTasks.set(runtimeTaskId, settling);
-    return settling;
+    const settle: TaskSettle = { terminal, done };
+    this.settlingTasks.set(runtimeTaskId, settle);
+    return settle;
   }
 
-  /** Never rejects: this runs on startup, stop, archive and send, and none of them may fail because of it. */
-  private async settleTaskOnce(runtimeTaskId: string): Promise<boolean> {
+  /**
+   * Never rejects: this runs on startup, stop, archive and send, and none of them may fail because of it.
+   * terminalReached is called as soon as the terminal write is over, before the finalization starts, so a caller can
+   * bound its wait for the write and its wait for the finalization separately; it is also called on every exit.
+   */
+  private async settleTaskOnce(runtimeTaskId: string, terminalReached: (ended: boolean) => void): Promise<boolean> {
     try {
       const task = await this.runtime.getTask(runtimeTaskId).catch(() => null);
       if (!task || task.status !== 'running') return false;
@@ -1077,6 +1115,7 @@ export class AgentChatService {
         outcome: 'failed',
         reason: 'task-complete',
       }).then(() => true, () => false);
+      terminalReached(ended);
       if (!ended) return false;
       await this.runtime.finalizeTask({
         taskId: task.id,
@@ -1089,6 +1128,9 @@ export class AgentChatService {
     } catch (error) {
       console.error('AGENT_CHAT_TASK_SETTLE_FAILED:' + safeErrorCode(error));
       return false;
+    } finally {
+      // Resolving a second time changes nothing; this only makes sure every exit resolves the terminal milestone.
+      terminalReached(false);
     }
   }
 
@@ -1097,7 +1139,12 @@ export class AgentChatService {
       const turn = this.store.getTurn(turnId);
       if (turn && (turn.status === 'stopped' || turn.status === 'failed' || turn.status === 'interrupted')) {
         // The end of a turn must not wait on runtime I/O without limit; the settle keeps running and later callers join it.
-        await waitAtMost(this.settleEndedTurnTask(turn.id, turn.runtimeTaskId), this.settleWaitMs, false);
+        // The terminal write and the finalization are bounded separately: a short finalization bound must not cut the
+        // write short, and a finalization that hangs must not hold the turn open once the task has ended.
+        const settle = this.joinOrStartTaskSettle(turn.id, turn.runtimeTaskId);
+        if (settle && await waitAtMost(settle.terminal, this.settleTerminalWaitMs, false)) {
+          await waitAtMost(settle.done, this.settleWaitMs, false);
+        }
       }
     } catch (error) {
       console.error('AGENT_CHAT_TASK_SETTLE_FAILED:' + safeErrorCode(error));

@@ -1,7 +1,7 @@
 # Perkuatan recall kompaksi konteks Native
 Tanggal: 2026-10-30
 Revisi: 1
-Status: APPROVED (revisi 1, scope P1+P2 build); P1+P2 IMPLEMENTED IN SOURCE 2026-11-02, tes sempit lolos; belum di-build, belum aktif, verifikasi hidup OPEN
+Status: APPROVED (revisi 1, scope P1+P2 build); P1+P2 IMPLEMENTED IN SOURCE 2026-11-02, di-build dan aktif di Core 2026-11-03 (restart resmi). Tes 2026-11-03 di Native: compaction 20/20 dan dtc1 34/34 lulus. Verifikasi hidup (giliran panjang dengan /compact lalu compaction_source) OPEN.
 Jenis: Improvement
 Asal dan bukti: `src/agent-context-compaction.ts` (batas per baris, `TURN_BUDGET_CHARS`, `compactTurnMessages`), `src/agent-chat-store.ts:327` dan `:674` (`chat_compaction_sources`, `getCompactionSource`), pesan pengguna 2026-10-30 (menyetujui alat pencarian riwayat chat).
 

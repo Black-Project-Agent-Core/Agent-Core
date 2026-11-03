@@ -1,7 +1,7 @@
 # Batas iterasi dan Goal mode Native
 Tanggal: 2026-10-30
 Revisi: 1
-Status: APPROVED (revisi 1, scope A+B+C build). Implementasi: A (batas 60) sudah aktif di build yang berjalan; B (jendela Goal mode) dan C (laporan batas DONE/OPEN/NEXT) sudah di-commit 2026-10-30 dan menunggu aktivasi serta verifikasi hidup. Arsip ke `docs/history-agent-core` menyusul setelah verifikasi hidup.
+Status: APPROVED (revisi 1, scope A+B+C build). Implementasi: A (batas 60) sudah aktif di build yang berjalan; B (jendela Goal mode) dan C (laporan batas DONE/OPEN/NEXT) sudah di-commit 2026-10-30 dan aktif di Core sejak build 2026-11-03. Tes 2026-11-03 di Native: capability-config 10/10 lulus; controller 41/42 pada run terakhir, satu tes gagal karena tunggu event streaming 1 dtk, belum terbukti terkait Goal mode. Verifikasi hidup (tugas Goal mode melewati 60 iterasi lalu selesai setelah Continue) OPEN. Arsip ke `docs/history-agent-core` menyusul setelah verifikasi hidup.
 Jenis: Improvement
 Asal dan bukti: `src/config.ts:274`, `src/agent-runtime.ts:468`, `src/agent-controller.ts:886-893` dan `:1862-1887`, `src/agent-chat-store.ts:1152`, `src/agent-chat-service.ts:465-519`, `src/agent-turn-events.ts:205`, pengamatan sesi 2026-10-30, pertanyaan pengguna 2026-10-30.
 
