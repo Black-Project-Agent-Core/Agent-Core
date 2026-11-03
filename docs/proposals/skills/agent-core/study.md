@@ -1,11 +1,11 @@
 # study
 
 Nama: study
-Status: proposed
+Status: approved
 Aksi: create
-Artifact: not-built
+Artifact: catalog-active
 Workspace: agent-core
-Artifact digest: unavailable
+Artifact digest: sha256:fc927e0f22338c68b194e15a3de8105c8d5433d77087816f58a79cddf295ddf9
 Target active digest: none
 Proposal ID: skill-proposal:b231b9f37835c97ec68e4e78431fab86
 Revisi: sha256:5cd75ea39fd24ce878ad20fe4743d271d87158c5a47bc598454a7dcc07ebe354
@@ -86,8 +86,8 @@ A trial on a folder of dozens of files reports coverage as read-in-full, skimmed
 A trial that writes a proposal ends with one local commit holding only that file and no push; the trial records the application of mind-control with the exact active digest and does not modify source or the active catalog.
 A trial study of one short anonymous note with a planted arithmetic error records at least eight lenses (a finding or a reason for skipping), recomputes and contradicts the error, grades credibility with reasons, flags an environment mismatch, labels any single-lens candidate, and names one invented lens and a value profile; nothing is written outside the test folder.
 
-## Keputusan pengguna
-Belum ada keputusan atas revisi ini.
+## Keputusan dan asal otorisasi
+approve / build-and-activate / controller-decision:05ea8663eb53ee89afbd9719b8cb38362f50d155ffa2360e185b08339222a0e3 / trusted-controller: 59a9447b-06fc-4961-a533-1bdc03213222
 
 ## Riwayat revisi
 sha256:a35d61637ae9cc0c51025efe9fccf74261fccec2a394673d82bd32e17907b35b / proposed / 2026-10-30T11:29:40.815Z
