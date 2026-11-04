@@ -82,6 +82,16 @@ Plan Native Conversation Control, Semantic IDE, Memory06–21 dan MRR mengandung
 - Checkpoint sebelum promosi: `a392cd31-aa1b-4185-aaf6-881585eeb347`; metadata untuk seluruh **12 path yang diminta** cocok dan tersedia. Checkpoint mewarisi **302 entri** total; itu bukan seluruhnya hasil tugas dan tidak boleh direstore massal. Rollback hanya scope artifact tugas.
 - Launcher baru yang dipublish/diverifikasi: 163045589 byte, SHA-256 `fe04078d77815f9528fb87705cf897896054e871f398f226d93c404021fe437b`. Pending lama identik dengan EXE aktif dan tidak memiliki marker aktivasi; tidak ada kandidat berbeda yang ditimpa pada checkpoint ini.
 
+### Checkpoint sebelum compact — 2026-11-05
+
+**Aktivasi G1 BELUM selesai.** Promosi ke Platform sudah exit 0 dan 13/13 hash artifact tugas cocok, tetapi permintaan `restart_agent_core` tidak berhasil menjalankan CMD. Log tepat `runtime/restart/mcp-005f21d5-713a-4f35-9511-1766b12f6099.log` berisi `'F:\Agent' is not recognized as an internal or external command`. Tidak ada restart kedua yang diminta.
+
+Pemeriksaan ulang: health `ok`, versi `1.7.0-dev.1`, **build.stale=true**, 0 running dan 0 resumable chat turns. EXE aktif masih SHA-256 `91ce94384edbc989b36012a0ebbba766066c369dd7830ab31b10c196630bd8eb`; marker pending masih ada untuk kandidat `fe04078d77815f9528fb87705cf897896054e871f398f226d93c404021fe437b`. Health ok bukan bukti build baru sudah dimuat. Verifier host `bn0qu5cuh` tidak memiliki completion record dan outputnya kosong; pemeriksaan proses terakhir tidak menemukan verifier milik task yang masih hidup.
+
+Owner yang harus diperbaiki setelah compact: `src/mcp/restart-tool.ts:27–28` meneruskan satu pasang kutip ke `cmd /d /s /c` dengan `windowsVerbatimArguments=true`; CMD root sendiri sudah mengutip jalur PowerShell/skrip pada baris 4. Buat regresi quoting path-spasi dan perbaiki owner bersama tanpa melemahkan guard satu permintaan per resident. Rebuild/promosikan perbaikan, lalu gunakan jalur CMD resmi yang sudah didokumentasikan untuk bootstrap bila tool hidup masih memegang request lama. Itu hanya boleh sesudah bukti non-eksekusi ini diperiksa, bukan retry buta atau jalur restart baru. Setelah actual restart, periksa receipt baru, hash EXE, health/stale, handshake dan refresh discovery; jangan membuka ChatGPT dari controller Claude.
+
+**Lanjutkan G1 dahulu**, baru G2–G7. Tes target saat ini: manifest=2, date-schema=2, release-compat=2, release-boundaries=2, release-aliases=2, selected release-stable-readiness=2; mcp-schema=1, semantic-provisioning=1, game-mode=1, launcher-package=1. Jangan menjalankan ulang target yang sudah dua percobaan tanpa izin sesuai aturan; target quoting restart belum dijalankan oleh task ini. Build/typecheck/lint bukan percobaan tes. Source commit kode `ca4afa13`, goal ledger awal `b6cff15`; `handoff-agent-core-orchestration.md` untracked milik pengguna tetap dipertahankan. Task key Learning utama: `agent-core-backlog-goals-g0-g1-20261104`; jangan memakai task ID sesi lain.
+
 ### Kontrak implementasi G1
 
 1. Pertahankan parser/required/optional/nullability/value semantics semua schema; penghilangan metadata regex tanggal hanya boleh ketika format dan validasi server tetap utuh serta negatif tanggal diuji.
