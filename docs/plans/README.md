@@ -1,5 +1,9 @@
 # Implementation plans and status
 
+## Kelanjutan lintas mesin — 2026-11-05
+
+Mulai dari [handoff terkini](../../handoff-agent-core-orchestration.md), lalu [ledger G0–G7](Penyelesaian-Backlog-Agent-Core.md). Ledger memuat checkpoint, batas percobaan tes dan teks lengkap dua rencana Agent Core yang sebelumnya hanya tersimpan pada host Claude: rencana induk yang disetujui serta rencana pendahulu pascapenggabungan Skill. Lampiran adalah snapshot historis; status terbaru tetap bagian utama ledger. Sebanyak 13 plan/spec yang sebelumnya diabaikan Git juga tersedia pada [indeks arsip plan](../superpowers/README.md), di path asalnya. Clone branch `fix/agent-core-tool-latency-and-ui-cards`, bukan `main`. Runtime privat dan instalasi Platform tidak ikut clone.
+
 ## Active backlog goals — 2026-11-04
 
 [Goals penyelesaian backlog Agent Core](Penyelesaian-Backlog-Agent-Core.md) adalah ledger aktif untuk G0–G7 berdasarkan permintaan pengguna setelah audit. Prioritas pertama: budget manifest MCP dan gerbang rilis, lalu residual correctness, rekomendasi proposal yang dipilih, acceptance dan rekonsiliasi. Bagian bertanggal lama di bawah tetap bukti historis; bukan bukti seluruh scope masih belum dibangun atau otorisasi mengulang acceptance yang sudah ditutup.

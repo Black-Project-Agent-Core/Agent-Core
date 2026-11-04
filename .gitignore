@@ -41,7 +41,15 @@ SubProject/Agent-Code/*.WebView2/
 /Set-Tunnel-Key.bat
 /Set-Tunnel-Key.ps1
 /release/
-/docs/superpowers/
+# Publish plan/spec Markdown for cross-machine continuation; other host artifacts stay local.
+/docs/superpowers/*
+!/docs/superpowers/README.md
+!/docs/superpowers/plans/
+!/docs/superpowers/specs/
+/docs/superpowers/plans/*
+!/docs/superpowers/plans/*.md
+/docs/superpowers/specs/*
+!/docs/superpowers/specs/*.md
 /.tools/
 
 # Historical incident reports were removed in the file-native cutover; their husks are

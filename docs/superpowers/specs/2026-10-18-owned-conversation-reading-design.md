@@ -1,0 +1,21 @@
+# Reading A from B's owned browser tab
+
+The user clarified that B creates and owns the OBU tab, then the human talks with A in that same tab. B reads that tab on demand to validate the discussion. Preserve this scope; do not copy the conversation, claim another tab, change the sibling Browser Bridge, send messages, or add a monitor/model.
+
+Baseline: a real Chromium synthetic 100-turn probe returned only eight turns/48,000 characters. Editing the tail beyond 6,000 characters was invisible and did not change the legacy revision. Evidence: runtime/build/conversation-coverage-20261018/baseline.json.
+
+Choose semantic reading over generic viewport observation or a second tab/Bridge grant. Extend external browser_control.conversation_read for an already owned OBU session. Keep the existing Bridge path, drafting policy and frozen Native schema/behavior unchanged.
+
+Interface: read:{kind:'index',cursor?} returns chronological, paged message metadata with opaque messageRef, author role, content version/length, coverage and nextCursor. read:{kind:'message',messageRef,offset?} returns a bounded rendered-text chunk, offset/nextOffset/eof and the same version. No selectors, JS, coordinates, raw tab claims or caller-controlled CDP. Default OBU read starts an index. Fixed limits keep the schema small.
+
+Refs/cursors bind the owned tab, canonical ChatGPT /c URL, document and message version. A new index without a cursor explicitly starts from the current conversation; homepage/new-chat reports no-conversation until the first /c URL exists. Old refs never cross conversation navigation/reload. Changed message content, including tails after 6,000 characters, invalidates its ref; branch/reordering changes invalidate index continuation. Reading an older unchanged message remains possible while A streams or the user types in the composer.
+
+Workload: hundreds/thousands of loaded turns, occasionally long code answers, repeated on-demand reads with small output. Index pages max20 turns; body chunks max12,000 UTF-16 units with safe surrogate boundaries. Bound inspected roots/nodes, message capture (2Mi UTF-16 units), reference count and cursor count. Node retains no message text; page-side capture is transient. Explicitly report budget/unsupported gaps rather than silently cutting them. No measured speedup claim. Canonical rendered text must preserve code whitespace and declare representation provenance; it is not original Markdown or file contents.
+
+Coverage always distinguishes loaded DOM from full history: completeHistory:false, loaded count, scan/capture omissions, unreadable role/body boundaries and unsupported attachments. DOM-unloaded/virtualized history is unknown, not deleted. Reading does not scroll, focus, type, click, navigate, or persist private chat in Memory/artifacts. Existing OBU30min lifetime and session budgets remain. Actual-history loading can use separately observed scroll actions when needed; this reader does not disturb the human's viewport.
+
+Real qualification revealed older app-turn wrappers whose body parts have no reliable author evidence. Include their scoped, unclaimed outermost body parts as role:unknown/authorKnown:false rather than losing text or guessing assistant identity. Exclude recognized owners, user bubbles and mismatched conversation scopes; bind refs to exact part membership and full body hash. Keep author ambiguity explicit. A metadata-only Navigation API listener tracks URL epochs to reject unobserved SPA away/back reuse; report current-url-only fallback when the API is absent.
+
+Acceptance: real Chromium >80-turn index pages; exact long-message chunk reconstruction and tail-change refusal; code whitespace; composer/focus/scroll unchanged; homepage→chat, branch/navigation/reload, foreign/stale refs, unsupported layout and budget coverage. Exercise external MCP/schema/privacy compatibility, Native guards and manifest budget. Build/publish/restart once through the official workflow after qualification, then direct-link/scroll/Refresh tools. A real private-chat acceptance needs the user's chosen conversation; synthetic evidence must stay labeled synthetic.
+
+Execution follows the user's standing Agent Core auto-approval. Main integrates; reusable Raka may own the new isolated reader module. No Git publication, release apply, downloads or unrelated verification.

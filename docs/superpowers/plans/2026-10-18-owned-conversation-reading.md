@@ -1,0 +1,14 @@
+# Owned conversation reading implementation
+
+Spec: ../specs/2026-10-18-owned-conversation-reading-design.md
+
+1. Main writes failing real-Chromium service regressions in tests/owned-conversation-reading.test.ts. Intercept only the isolated browser's synthetic ChatGPT fixture requests; no private chat data.
+2. Raka owns src/rdc/browser-control/owned-conversation-reader.ts: export OwnedConversationReader with constructor(evaluate:(expression:string,awaitPromise?:boolean)=>Promise<any>) and read(input?:{kind:'index',cursor?:string}|{kind:'message',messageRef:string,offset?:number}):Promise<Record<string,any>>. Own fixed internal extraction, bounded refs/cursors/text, canonical source binding and stale checks. Optional dedicated module tests belong to Raka; do not edit Main's integration test.
+3. Main integrates owned OBU conversation_read in service.ts and forwards read through existing handler. Add the compact selector only to externalBrowserControl, preserve Native/legacy Bridge and reject selectors on unsupported transports/actions. Compact only the external browser description enough to retain the128KiB full optional manifest limit. Preserve conversation payload metadata-only history/no-spill behavior.
+4. Run scoped Chromium/service/manifest/Bridge regressions; inspect source/graph impact and independent review. Correct real failures before activation. Do not run unrelated suites.
+5. Update CODEBASE and browser guide, add Changeset, build guarded Node and installed local-SDK launcher, hash-stage and use one official restart. Rebootstrap, verify resident synthetic read and focus, perform mandatory settings Refresh tools through browser use, clean owned test tabs/processes.
+6. Record precise limits/real versus synthetic verification, finalize scoped Learning, report outcome. Do not imply the external model remembers an unlimited transcript or wakes automatically.
+
+Review focus: long-tail streaming changes; new-chat URL transition and reload; composer mutations outside messages; ambiguous/virtualized DOM coverage; per-response/source/cache/manifest bounds.
+
+Completed2026-10-18:65 scoped tests, guarded build and local launcher publish passed; focused membership/SPA checks passed after hardening. Independent Raka integration/privacy review found no blocking defect. Official restart receipt4374021009884d66b44913d7e2706a9b completed exit0. Actual resident MCP on the same selected real conversation returned10 loaded groups/27,042 characters, all EOF, with unchanged background/focus/composer/scroll metadata. Refresh tools was scrolled into view and clicked once; returned enabled; settings/original test tabs acknowledged cleanup. Human conversation remains in the fresh owned background tab. Source/current-client descriptor caching is documented, not treated as fresh discovery. Full unmounted history and attachment contents remain unavailable; no automatic monitor was added. See CODEBASE and the runtime evidence folder.
