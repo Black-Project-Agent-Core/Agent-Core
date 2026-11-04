@@ -3,10 +3,13 @@ import * as ts from 'typescript-lsp-runtime';
 
 export const MCP_REGISTRATION_FILES = [
   'src/mcp/server.ts',
+  'src/mcp/controller-contract.ts',
+  'src/mcp/restart-tool.ts',
+  'src/mcp/external-reconstruction-harness-tools.ts',
+  'src/mcp/artifact-inspect-tools.ts',
   'src/memory/mcp/tools.ts',
   'src/memory/mcp/experience-tools.ts',
   'src/mcp/learning-tools.ts',
-  'src/mcp/partner-tools.ts',
   'src/mcp/semantic-ide-tools.ts',
   'src/mcp/skills-tools.ts',
   'src/mcp/phone-tools.ts',
@@ -30,15 +33,39 @@ function importMap(sf, file) {
   }
   return map;
 }
+function isNativeSelector(condition) {
+  if (ts.isPropertyAccessExpression(condition) && ts.isIdentifier(condition.expression)
+    && condition.expression.text === 'runtime' && condition.name.text === 'nativeTaskId') return true;
+  if (!ts.isIdentifier(condition) || condition.text !== 'native') return false;
+  let block = condition.parent;
+  while (block && !ts.isBlock(block) && !ts.isSourceFile(block)) block = block.parent;
+  if (!block) return false;
+  const shadowsBoolean = node => {
+    if (node.name && ts.isIdentifier(node.name) && node.name.text === 'Boolean') return true;
+    return ts.forEachChild(node, shadowsBoolean) ?? false;
+  };
+  if (shadowsBoolean(condition.getSourceFile())) return false;
+  for (const statement of block.statements) {
+    if (!ts.isVariableStatement(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)
+      || statement.pos >= condition.pos) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== 'native' || !declaration.initializer) continue;
+      return ['Boolean(runtime.nativeTaskId)',
+        'Boolean(runtime.nativeTaskId) || runtime.sharedNativeRegistry === true']
+        .includes(canonical(declaration.initializer.getText()));
+    }
+  }
+  return false;
+}
+
 function schemaRef(expr, imports) {
   let node = expr;
   while (ts.isParenthesizedExpression(node)) node = node.expression;
   if (ts.isConditionalExpression(node)) {
     const condition = node.condition;
-    // This report covers external discovery. Never execute a selector or guess
-    // arbitrary conditions; the known Native selector chooses its false arm.
-    if (!ts.isPropertyAccessExpression(condition) || !ts.isIdentifier(condition.expression)
-      || condition.expression.text !== 'runtime' || condition.name.text !== 'nativeTaskId')
+    // External discovery uses the false arm of known Native selectors only;
+    // same-block immutable aliases are recognized without executing source.
+    if (!isNativeSelector(condition))
       throw new Error('MCP_CONTRACT_UNSUPPORTED_CONDITION: ' + canonical(condition.getText()));
     const external = schemaRef(node.whenFalse, imports);
     if (!external) throw new Error('MCP_CONTRACT_UNSUPPORTED_CONDITION: external schema is unresolved');

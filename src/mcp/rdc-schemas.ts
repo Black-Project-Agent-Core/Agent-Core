@@ -81,7 +81,7 @@ export const getUsageStats = z.object({});
 export const getRecentToolCalls = z.object({
   maxResults: z.number().min(1).max(1000).optional().meta({ default: 50 }),
   toolName: z.string().optional(),
-  since: z.iso.datetime().optional(),
+  since: z.iso.datetime().meta({ pattern: undefined, description: 'UTC ISO-8601 timestamp ending in Z.' }).optional(),
   compact: z.boolean().optional().meta({ default: false }),
   failuresOnly: z.boolean().optional().meta({ default: false }),
 });
