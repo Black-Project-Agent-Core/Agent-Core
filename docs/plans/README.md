@@ -1,5 +1,9 @@
 # Implementation plans and status
 
+## Active backlog goals — 2026-11-04
+
+[Goals penyelesaian backlog Agent Core](Penyelesaian-Backlog-Agent-Core.md) adalah ledger aktif untuk G0–G7 berdasarkan permintaan pengguna setelah audit. Prioritas pertama: budget manifest MCP dan gerbang rilis, lalu residual correctness, rekomendasi proposal yang dipilih, acceptance dan rekonsiliasi. Bagian bertanggal lama di bawah tetap bukti historis; bukan bukti seluruh scope masih belum dibangun atau otorisasi mengulang acceptance yang sudah ditutup.
+
 Source candidate **`0.15.0-beta.1`**. Source implementation, offline verification, published artifact and resident acceptance are separate gates. User authorization on 2026-10-10 covers implementation of Plans02–05 together; it does not authorize a provider benchmark or automatic production re-embedding.
 
 [Documentation](../README.md) · [Codebase](../CODEBASE.md) · [Candidate notes](../releases/0.15.0-beta.1.md)

@@ -1,8 +1,12 @@
 # Proposal review
 
-Status: NO ACTIVE PROPOSALS — 2026-10-29 (Asia/Tomsk).
+Status: ACTIVE BACKLOG — 2026-11-04. [Goals penyelesaian backlog Agent Core](../plans/Penyelesaian-Backlog-Agent-Core.md) memetakan 13 proposal substantif unik, scope/revisi yang dipilih, implementasi parsial, acceptance serta gate operator. Source/Platform mirror tidak dihitung dua kali; Skill `study` sudah aktif dan bukan pemasangan baru.
 
-Seluruh scope penting pada antrean ini telah diimplementasikan atau ditutup dengan falsifier/keputusan historis yang eksplisit. Bukti, batas manfaat dan kegagalan tetap dipertahankan. Tidak ada permintaan implementasi aktif tersisa.
+Pengguna meminta pengerjaan rekomendasi dan penyelesaian bertahap setelah audit. Ledger membedakan otorisasi pekerjaan tersebut dari status keputusan/qualification registry. Scope CLOSED/HOLD lama tetap dipertahankan; tidak ada approval atau acceptance yang dipalsukan.
+
+## Penutupan antrean lama — historis, 2026-10-29
+
+Pernyataan NO ACTIVE PROPOSALS pada 29 Oktober berlaku untuk antrean yang diarsipkan di bawah, bukan proposal baru 30 Oktober–3 November. Scope penting antrean lama telah diimplementasikan atau ditutup dengan falsifier/keputusan historis eksplisit. Bukti, batas manfaat dan kegagalan tetap dipertahankan.
 
 - [Laporan dan ledger penuntasan](../verification/Proposal-Completion.md)
 - [Harness2 donor](../history-agent-core/Harness2-Donor-Proposals.md)
