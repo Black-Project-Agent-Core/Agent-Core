@@ -1,3 +1,3 @@
 @echo off
-cd /d "E:\Projects\Agent-Core"
+cd /d "%~dp0"
 claude --teleport session_01MLUF7ApFeHzgemGVU2q712
