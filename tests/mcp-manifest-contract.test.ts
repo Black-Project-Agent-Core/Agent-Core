@@ -118,6 +118,17 @@ describe('MCP public manifest contract', () => {
     expect(approximateTokens).toBeLessThanOrEqual(APPROX_TOKEN_BUDGET);
   });
 
+  it('pins the release cohort with artifact inspection separately from the base cohort', () => {
+    const server = createAgentCoreMcpServer(undefined, { ...fullRuntimeStub(), artifactAuthorization: {} });
+    const registrations = (server as any)._registeredTools ?? (server as any).registeredTools;
+    const entries: Array<[string, any]> = registrations instanceof Map
+      ? [...registrations.entries()] : Object.entries(registrations ?? {});
+    expect(entries).toHaveLength(80);
+    expect(entries.map(([name]) => name)).toEqual(expect.arrayContaining([
+      ...registeredTools().map(([name]) => name), 'artifact_inspect',
+    ]));
+  });
+
   it('keeps the full optional-cohort manifest inside the handshake budget', () => {
     const server = createAgentCoreMcpServer(undefined, {
       ...fullRuntimeStub(), artifactAuthorization: {}, memoryExperience: {},

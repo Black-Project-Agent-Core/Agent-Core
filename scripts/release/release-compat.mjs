@@ -1,9 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import * as ts from 'typescript-lsp-runtime';
 import { CURRENT_LINE_BASELINE_REF, ROOT } from './release-lib.mjs';
-import { compareMcpContracts } from './mcp-contract.mjs';
+import { compareMcpContracts, MCP_REGISTRATION_FILES } from './mcp-contract.mjs';
 
 function git(args) {
   return new Promise((resolve, reject) => {
@@ -35,8 +37,9 @@ async function current(file) {
 }
 
 async function baseline(file) {
-  try { return await git(['show', `${CURRENT_LINE_BASELINE_REF}:${file.replaceAll('\\', '/')}`]); }
-  catch { return null; }
+  const relative = file.replaceAll('\\', '/');
+  const listed = await git(['ls-tree', '--name-only', CURRENT_LINE_BASELINE_REF, '--', relative]);
+  return listed.trim() ? git(['show', `${CURRENT_LINE_BASELINE_REF}:${relative}`]) : null;
 }
 
 function toolNames(text) {
@@ -47,7 +50,7 @@ function toolNames(text) {
   return [...names].sort();
 }
 
-function publicRoutes(text) {
+export function publicRoutes(text) {
   if (!text) return [];
   const routes = new Set();
   for (const match of text.matchAll(/(?:route|pathname)\s*===?\s*['"]([^'"]+)['"]/g)) {
@@ -56,6 +59,17 @@ function publicRoutes(text) {
   for (const match of text.matchAll(/request\.url[^\n]*['"]([^'"]+)['"]/g)) {
     if (match[1].startsWith('/')) routes.add(match[1]);
   }
+  const source = ts.createSourceFile('routes.ts', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const visit = node => {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === 'match' && ts.isIdentifier(node.expression.expression)
+      && ['route', 'pathname'].includes(node.expression.expression.text)
+      && node.arguments[0] && ts.isRegularExpressionLiteral(node.arguments[0])) {
+      routes.add(`regex:${node.arguments[0].getText(source)}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
   return [...routes].sort();
 }
 
@@ -74,10 +88,17 @@ function registeredManifest(server) {
   })).sort((a, b) => a.name.localeCompare(b.name)) };
 }
 const serializedBytes = value => Buffer.byteLength(JSON.stringify(value), 'utf8');
+const MANIFEST_BYTE_BUDGET = 128 * 1024;
+const MANIFEST_TOKEN_BUDGET = 32_768;
+function manifestMetrics(manifest) {
+  const bytes = serializedBytes(manifest), approximateTokens = Math.ceil(bytes / 4);
+  return { toolCount: manifest.tools.length, bytes, approximateTokens,
+    byteBudget: MANIFEST_BYTE_BUDGET, tokenBudget: MANIFEST_TOKEN_BUDGET,
+    exceeded: bytes > MANIFEST_BYTE_BUDGET || approximateTokens > MANIFEST_TOKEN_BUDGET };
+}
 
 async function imageBaseline(ref, image) {
   if (!/^[a-f0-9]{40}$/i.test(ref)) throw new Error('Manifest image baseline requires an exact commit SHA');
-  const ts = await import('typescript-lsp-runtime');
   const z = await import('zod/v4');
   const variables = text => {
     const sf = ts.createSourceFile('schema.ts', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -117,24 +138,21 @@ async function imageBaseline(ref, image) {
     withinDelta: serializedBytes(image) - serializedBytes(baselineNode) <= 256 };
 }
 
-async function builtManifestBudget(options = {}) {
+export async function builtManifestBudget(options = {}) {
   const serverPath = path.join(ROOT, 'dist', 'mcp', 'server.js');
   try {
     const stat = await fs.stat(serverPath);
-    const sourceStats = await Promise.all([...mcpFiles, ...schemaFiles].map(async file => {
-      try { return (await fs.stat(path.join(ROOT, file))).mtimeMs; } catch { return 0; }
-    }));
+    const sourceStats = await Promise.all([...mcpFiles, ...schemaFiles].map(async file =>
+      (await fs.stat(path.join(ROOT, file))).mtimeMs));
     const stale = Math.max(...sourceStats) > stat.mtimeMs;
     const mod = await import(`${pathToFileURL(serverPath).href}?compat=${stat.mtimeMs}`);
     // This is the exact reviewed cohort, not a claim about all optional runtime tools.
     const runtime = { memoryService: {}, learningService: {}, semanticIde: {}, skillsService: {},
       phoneController: { enabled: true }, codeIntelligence: {}, webResearch: {}, artifactAuthorization: {} };
     const manifest = registeredManifest(mod.createAgentCoreMcpServer(undefined, runtime));
-    const bytes = serializedBytes(manifest), approximateTokens = Math.ceil(bytes / 4);
     const image = manifest.tools.find(tool => tool.name === 'image_inspect');
     const result = { available: true, stale, cohort: 'reviewed-registration-without-memory-v2-and-controller-learning',
-      toolCount: manifest.tools.length, bytes, approximateTokens, byteBudget: 128 * 1024, tokenBudget: 32_768,
-      exceeded: bytes > 128 * 1024 || approximateTokens > 32_768,
+      ...manifestMetrics(manifest),
       imageNodeBytes: serializedBytes(image), imageDescriptionBytes: Buffer.byteLength(image.description, 'utf8') };
     if (options.imageBaseline) result.imageBaseline = await imageBaseline(options.imageBaseline, image);
     if (options.output) {
@@ -149,10 +167,12 @@ async function builtManifestBudget(options = {}) {
       if (stale) throw new Error('Refusing schema artifact from a stale build');
       if (path.dirname(output) !== path.join(ROOT, 'docs', 'memory') || !output.endsWith('.json'))
         throw new Error('Schema artifact output must be a JSON file in docs/memory');
+      result.optionalCohorts = { memoryV2: manifestMetrics(memoryManifest), withController: manifestMetrics(full) };
+      result.optionalCohorts.withController.budgetVerdict = result.optionalCohorts.withController.exceeded ? 'exceeded' : 'within-budget';
+      result.exceeded ||= Object.values(result.optionalCohorts).some(cohort => cohort.exceeded);
+      if (result.exceeded) throw new Error('Optional MCP cohort handshake budget exceeded; artifact was not written');
       await fs.writeFile(output, raw, { encoding: 'utf8', flag: 'wx' });
       const { createHash } = await import('node:crypto');
-      result.optionalCohorts = { memoryV2: { toolCount: memoryManifest.tools.length, bytes: serializedBytes(memoryManifest) },
-        withController: { toolCount: full.tools.length, bytes: serializedBytes(full), budgetVerdict: 'not-the-reviewed-75-tool-cohort' } };
       result.artifact = { path: output, bytes: Buffer.byteLength(raw, 'utf8'), sha256: createHash('sha256').update(raw).digest('hex'),
         kind: 'compiled-MCP-schema-snapshot-not-plugin-ZIP', source: 'existing native registration and Zod schemas',
         retrievalPlan: Boolean(full.tools.find(tool => tool.name === 'controller_learning')?.inputSchema?.properties?.retrievalPlan),
@@ -164,30 +184,13 @@ async function builtManifestBudget(options = {}) {
   }
 }
 
-const mcpFiles = [
-  'src/mcp/server.ts',
-  'src/mcp/controller-contract.ts',
-  'src/mcp/restart-tool.ts',
-  'src/mcp/external-reconstruction-harness-tools.ts',
-  'src/mcp/artifact-inspect-tools.ts',
-  'src/memory/mcp/tools.ts',
-  'src/memory/mcp/experience-tools.ts',
-  'src/mcp/learning-tools.ts',
-  'src/mcp/partner-tools.ts',
-  'src/mcp/semantic-ide-tools.ts',
-  'src/mcp/skills-tools.ts',
-  'src/mcp/phone-tools.ts',
-  'src/mcp/phone-game-tools.ts',
-  'src/mcp/code-intelligence-tools.ts',
-  'src/mcp/web-research-tools.ts',
-];
+export const mcpFiles = MCP_REGISTRATION_FILES;
 const routeFiles = ['src/http/app.ts', 'src/oauth/service.ts'];
-const schemaFiles = [
+export const schemaFiles = [
   'src/mcp/rdc-schemas.ts',
   'src/mcp/rdc-tool-metadata.ts',
   'src/memory/mcp/schemas.ts',
   'src/mcp/learning-schemas.ts',
-  'src/mcp/partner-schemas.ts',
   'src/mcp/semantic-ide-schemas.ts',
   'src/mcp/skills-schemas.ts',
   'src/mcp/phone-schemas.ts',
@@ -201,67 +204,91 @@ const schemaFiles = [
   'src/rdc/tools/image-review.ts',
 ];
 
-// Explicit export uses this existing registration serializer, not another generator.
-if (process.argv.includes('--manifest-only')) {
-  const option = name => { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; };
-  const result = await builtManifestBudget({ output: option('--output'), imageBaseline: option('--image-baseline') });
+export function manifestBudgetExitCode(result) {
+  // Surface cardinality is pinned per cohort by contract tests, not a different cohort's count.
+  return result?.available === true && result.stale === false && result.exceeded === false
+    && Object.values(result.optionalCohorts ?? {}).every(cohort => cohort.exceeded === false)
+    && (result.imageBaseline === undefined || result.imageBaseline?.withinDelta === true) ? 0 : 2;
+}
+
+export async function main(args = process.argv.slice(2)) {
+  // Explicit export uses this existing registration serializer, not another generator.
+  if (args.includes('--manifest-only')) {
+    const option = name => {
+      const index = args.indexOf(name);
+      if (index < 0) return undefined;
+      const value = args[index + 1];
+      if (!value || value.startsWith('--')) throw new Error(`${name} requires a value`);
+      return value;
+    };
+    const result = await builtManifestBudget({ output: option('--output'), imageBaseline: option('--image-baseline') });
+    console.log(JSON.stringify(result, null, 2));
+    return manifestBudgetExitCode(result);
+  }
+  await git(['rev-parse', '--verify', `${CURRENT_LINE_BASELINE_REF}^{commit}`]);
+  const currentTools = new Set();
+  const baselineTools = new Set();
+  for (const file of mcpFiles) {
+    for (const name of toolNames(await current(file))) currentTools.add(name);
+    for (const name of toolNames(await baseline(file))) baselineTools.add(name);
+  }
+
+  const currentRoutes = new Set();
+  const baselineRoutes = new Set();
+  for (const file of routeFiles) {
+    for (const route of publicRoutes(await current(file))) currentRoutes.add(route);
+    for (const route of publicRoutes(await baseline(file))) baselineRoutes.add(route);
+  }
+
+  const changedSchemas = [];
+  for (const file of schemaFiles) {
+    const [before, after] = await Promise.all([baseline(file), current(file)]);
+    if (before !== after) changedSchemas.push(file);
+  }
+
+  const [mcpContract, manifestBudget] = await Promise.all([
+    compareMcpContracts(current, baseline),
+    builtManifestBudget(),
+  ]);
+
+  const result = {
+    baselineRef: CURRENT_LINE_BASELINE_REF,
+    tools: {
+      baselineCount: baselineTools.size,
+      currentCount: currentTools.size,
+      removed: diff([...baselineTools], [...currentTools]),
+      added: diff([...currentTools], [...baselineTools]),
+    },
+    routes: {
+      baseline: [...baselineRoutes].sort(),
+      current: [...currentRoutes].sort(),
+      removed: diff([...baselineRoutes], [...currentRoutes]),
+      added: diff([...currentRoutes], [...baselineRoutes]),
+    },
+    schemaReviewRequired: changedSchemas.sort(),
+    mcpContract,
+    manifestBudget,
+  };
+  result.breakingEvidence = result.tools.removed.length > 0
+    || result.routes.removed.length > 0
+    || mcpContract.breakingEvidence;
+  result.verificationIssues = [
+    ...(manifestBudget.available && manifestBudget.stale ? ['built MCP manifest is stale relative to source'] : []),
+    ...(!manifestBudget.available ? ['built MCP manifest unavailable'] : []),
+    ...(manifestBudget.available && manifestBudget.exceeded ? ['MCP handshake budget exceeded'] : []),
+  ];
+  result.ok = !result.breakingEvidence && manifestBudgetExitCode(manifestBudget) === 0;
+
   console.log(JSON.stringify(result, null, 2));
-  if (!result.available || result.stale || result.exceeded || result.toolCount !== 79 || result.imageBaseline?.withinDelta === false)
-    process.exitCode = 2;
-} else {
-const currentTools = new Set();
-const baselineTools = new Set();
-for (const file of mcpFiles) {
-  for (const name of toolNames(await current(file))) currentTools.add(name);
-  for (const name of toolNames(await baseline(file))) baselineTools.add(name);
+  return result.ok ? 0 : 2;
 }
 
-const currentRoutes = new Set();
-const baselineRoutes = new Set();
-for (const file of routeFiles) {
-  for (const route of publicRoutes(await current(file))) currentRoutes.add(route);
-  for (const route of publicRoutes(await baseline(file))) baselineRoutes.add(route);
+export function isMainModule(moduleUrl, entry = process.argv[1]) {
+  if (!entry) return false;
+  try { return realpathSync(fileURLToPath(moduleUrl)) === realpathSync(entry); }
+  catch (error) { if (error.code === 'ENOENT') return false; throw error; }
 }
 
-const changedSchemas = [];
-for (const file of schemaFiles) {
-  const [before, after] = await Promise.all([baseline(file), current(file)]);
-  if (before !== after) changedSchemas.push(file);
-}
-
-const [mcpContract, manifestBudget] = await Promise.all([
-  compareMcpContracts(current, baseline),
-  builtManifestBudget(),
-]);
-
-const result = {
-  baselineRef: CURRENT_LINE_BASELINE_REF,
-  tools: {
-    baselineCount: baselineTools.size,
-    currentCount: currentTools.size,
-    removed: diff([...baselineTools], [...currentTools]),
-    added: diff([...currentTools], [...baselineTools]),
-  },
-  routes: {
-    baseline: [...baselineRoutes].sort(),
-    current: [...currentRoutes].sort(),
-    removed: diff([...baselineRoutes], [...currentRoutes]),
-    added: diff([...currentRoutes], [...baselineRoutes]),
-  },
-  schemaReviewRequired: changedSchemas.sort(),
-  mcpContract,
-  manifestBudget,
-};
-result.breakingEvidence = result.tools.removed.length > 0
-  || result.routes.removed.length > 0
-  || mcpContract.breakingEvidence;
-result.verificationIssues = [
-  ...(manifestBudget.available && manifestBudget.stale ? ['built MCP manifest is stale relative to source'] : []),
-  ...(!manifestBudget.available ? ['built MCP manifest unavailable'] : []),
-  ...(manifestBudget.available && manifestBudget.exceeded ? ['MCP handshake budget exceeded'] : []),
-];
-result.ok = !result.breakingEvidence && !(manifestBudget.available && manifestBudget.exceeded);
-
-console.log(JSON.stringify(result, null, 2));
-if (!result.ok) process.exitCode = 2;
+if (isMainModule(import.meta.url)) {
+  process.exitCode = await main();
 }

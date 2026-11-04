@@ -1,16 +1,19 @@
 import * as z from 'zod/v4';
 
+// Keep server ISO validation; date-time already describes the wire format.
+const isoInstant = z.iso.datetime().meta({ pattern: undefined, description: 'UTC ISO-8601 timestamp ending in Z.' });
+
 const memoryLink = z.object({
   targetId: z.string().min(3).max(128),
   type: z.enum(['related', 'supports', 'supersedes', 'contradicts', 'derived-from']),
   strength: z.number().min(0).max(1),
-  createdAt: z.iso.datetime().optional(),
+  createdAt: isoInstant.optional(),
   reason: z.string().max(500).optional(),
 });
 const temporalMemoryLink = memoryLink.extend({
-  validFrom: z.iso.datetime().optional(),
-  validTo: z.iso.datetime().optional(),
-  referenceTime: z.iso.datetime().optional(),
+  validFrom: isoInstant.optional(),
+  validTo: isoInstant.optional(),
+  referenceTime: isoInstant.optional(),
   evidenceRefs: z.array(z.string().min(1).max(500)).max(16).optional(),
 }).refine(value => !value.validFrom || !value.validTo || Date.parse(value.validTo) >= Date.parse(value.validFrom), {
   message: 'validTo must not precede validFrom',
@@ -60,7 +63,7 @@ export const memorySearch = z.object({
   sourceFiles: z.array(z.string().min(1).max(500)).max(32).optional(),
   workspace: z.string().min(1).max(120).optional(),
   rankingProfile: z.enum(['legacy', 'bm25', 'fusion']).optional().meta({ default: 'legacy' }),
-  asOf: z.iso.datetime().optional(),
+  asOf: isoInstant.optional(),
 });
 export const memoryRemember = z.object({
   content: z.string().min(1).max(200_000),
@@ -72,7 +75,7 @@ export const memoryRemember = z.object({
   links: z.array(memoryLink).max(32).optional(),
   source: source.optional(),
   provenance: provenance.optional(),
-  expiresAt: z.iso.datetime().optional(),
+  expiresAt: isoInstant.optional(),
 });
 
 export const memoryUpdate = z.object({
@@ -85,7 +88,7 @@ export const memoryUpdate = z.object({
   category: z.string().max(200).optional(),
   links: z.array(memoryLink).max(32).optional(),
   provenance: provenance.optional(),
-  expiresAt: z.iso.datetime().nullable().optional(),
+  expiresAt: isoInstant.nullable().optional(),
 }).refine((value) => Object.keys(value).some((key) => key !== 'id'), { message: 'At least one memory field must be provided' });
 
 export const memoryDelete = z.object({
@@ -127,7 +130,7 @@ const memoryRememberValue = z.object({
   links: z.array(memoryLink).max(32).optional(),
   source: source.optional(),
   provenance: provenance.optional(),
-  expiresAt: z.iso.datetime().optional(),
+  expiresAt: isoInstant.optional(),
 });
 
 const memoryUpdatePatch = z.object({
@@ -139,7 +142,7 @@ const memoryUpdatePatch = z.object({
   category: z.string().max(200).optional(),
   links: z.array(memoryLink).max(32).optional(),
   provenance: provenance.optional(),
-  expiresAt: z.iso.datetime().nullable().optional(),
+  expiresAt: isoInstant.nullable().optional(),
 }).refine((value) => Object.keys(value).length > 0, { message: 'At least one update field must be provided' });
 
 export const memoryBatch = z.object({
