@@ -3,6 +3,7 @@ import type { CallToolResult } from '@modelcontextprotocol/client';
 import type { CodeIntelligenceService } from '../code-intelligence/service.js';
 import { buildChangedSymbolReview, revisionOptionError } from '../code-intelligence/change-review.js';
 import { scanChangedSourceSecurity } from '../code-intelligence/changed-source-security.js';
+import { searchCodeContext } from '../code-intelligence/context-search.js';
 import type { SemanticIdeService } from '../semantic-ide/service.js';
 import type { ExternalControllerLearningService } from '../learning/external-controller.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
@@ -192,6 +193,22 @@ export function registerCodeIntelligenceTools(
         ...(input.metricsDays !== undefined ? { days: input.metricsDays } : {}),
         ...(input.metricsLimit !== undefined ? { limit: input.metricsLimit } : {}),
       }));
+    }
+
+    if (input.action === 'context') {
+      const query = input.query;
+      if (!query) return errorResult('query is required for action=context');
+      try {
+        const resolved = await service.resolveWorkspace(context);
+        const root = resolved.worktreePath ?? resolved.cwd;
+        return textResult(await searchCodeContext({
+          root,
+          query,
+          ...(input.limit !== undefined ? { limit: input.limit } : {}),
+        }));
+      } catch (error) {
+        return errorResult(error instanceof Error ? error.message : String(error));
+      }
     }
 
     if (input.action === 'find') {

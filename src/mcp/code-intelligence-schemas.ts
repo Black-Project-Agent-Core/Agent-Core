@@ -9,7 +9,7 @@ const ref = z.string().min(1).max(500).optional();
 const worktreePath = z.string().min(1).max(4000).optional();
 
 export const codeOrient = z.object({
-  action: z.enum(['status', 'overview', 'clusters', 'topology', 'modules', 'stats', 'find', 'inspect', 'diagnostics', 'quarantine', 'metrics']),
+  action: z.enum(['status', 'overview', 'clusters', 'topology', 'modules', 'stats', 'find', 'context', 'inspect', 'diagnostics', 'quarantine', 'metrics']),
   query: z.string().min(1).max(1000).optional(),
   entityId: z.string().min(1).max(2000).optional(),
   kind: z.string().min(1).max(120).optional(),
