@@ -3,7 +3,7 @@ import type { CallToolResult } from '@modelcontextprotocol/client';
 import type { CodeIntelligenceService } from '../code-intelligence/service.js';
 import { buildChangedSymbolReview, revisionOptionError } from '../code-intelligence/change-review.js';
 import { scanChangedSourceSecurity } from '../code-intelligence/changed-source-security.js';
-import { searchCodeContext } from '../code-intelligence/context-search.js';
+import { CODE_CONTEXT_PROVIDER, searchCodeContext } from '../code-intelligence/context-search.js';
 import type { SemanticIdeService } from '../semantic-ide/service.js';
 import type { ExternalControllerLearningService } from '../learning/external-controller.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
@@ -150,6 +150,74 @@ async function runProvider(
   }
 }
 
+// Local lexical search has no provider call, but it takes the same path as provider tools:
+// tracker entry, controller bookkeeping (read-only), and an error result instead of a throw.
+async function runContextSearch(
+  service: CodeIntelligenceService,
+  query: string,
+  limit: number | undefined,
+  context: ReturnType<typeof contextFromInput>,
+  externalController?: ExternalControllerLearningService,
+  externalSessionId?: string,
+): Promise<any> {
+  const family = 'code_orient';
+  const call = beginExternalControllerToolCall(family);
+  const started = Date.now();
+  let result: any;
+  try {
+    const resolved = await service.resolveWorkspace(context);
+    const root = resolved.worktreePath ?? resolved.cwd;
+    const payload = await searchCodeContext({ root, query, ...(limit !== undefined ? { limit } : {}) });
+    result = textResult(payload);
+    activityTracker.record(
+      'CODE_INTELLIGENCE',
+      'success',
+      `${family} completed`,
+      'code-intelligence-tool',
+      {
+        family,
+        action: 'context',
+        providerTool: CODE_CONTEXT_PROVIDER,
+        workspace: context.workspace ?? '',
+        ref: context.ref ?? '',
+        durationMs: Date.now() - started,
+        hits: payload.hits.length,
+        indexFiles: payload.index.files,
+        indexAgeMs: payload.index.ageMs,
+        truncated: payload.index.truncated,
+        rebuilt: payload.index.rebuilt,
+      },
+    );
+  } catch (error) {
+    activityTracker.record(
+      'CODE_INTELLIGENCE',
+      'info',
+      `${family} unavailable`,
+      'code-intelligence-tool-failure',
+      {
+        family,
+        action: 'context',
+        providerTool: CODE_CONTEXT_PROVIDER,
+        workspace: context.workspace ?? '',
+        ref: context.ref ?? '',
+        durationMs: Date.now() - started,
+        errorFamily: compactErrorFamily(error),
+      },
+    );
+    result = errorResult(error instanceof Error ? error.message : String(error));
+  }
+  return externalControllerToolResult({
+    call,
+    service: externalController,
+    sessionId: externalSessionId,
+    tool: family,
+    args: { action: 'context', queryLength: query.length, ...(limit !== undefined ? { limit } : {}) },
+    result,
+    readOnly: true,
+    ...(context.workspace ? { workspace: context.workspace } : {}),
+  });
+}
+
 export function registerCodeIntelligenceTools(
   server: McpServer,
   service: CodeIntelligenceService,
@@ -172,7 +240,7 @@ export function registerCodeIntelligenceTools(
 
   server.registerTool('code_orient', {
     title: 'Code Intelligence Orient',
-    description: 'Structural code orientation, freshness, diagnostics, quarantine visibility, entity discovery, and inspection backed by project-local Grafel. Source files remain authoritative.',
+    description: 'Structural code orientation, freshness, diagnostics, quarantine visibility, entity discovery, and inspection backed by project-local Grafel. action=context is a local lexical search (no Grafel). Source files remain authoritative.',
     inputSchema: schemas.codeOrient.shape,
     annotations: { title: 'Code Intelligence Orient', readOnlyHint: true, openWorldHint: false },
   }, async (args: any) => {
@@ -198,17 +266,7 @@ export function registerCodeIntelligenceTools(
     if (input.action === 'context') {
       const query = input.query;
       if (!query) return errorResult('query is required for action=context');
-      try {
-        const resolved = await service.resolveWorkspace(context);
-        const root = resolved.worktreePath ?? resolved.cwd;
-        return textResult(await searchCodeContext({
-          root,
-          query,
-          ...(input.limit !== undefined ? { limit: input.limit } : {}),
-        }));
-      } catch (error) {
-        return errorResult(error instanceof Error ? error.message : String(error));
-      }
+      return runContextSearch(service, query, input.limit, context, externalController, externalSessionId);
     }
 
     if (input.action === 'find') {

@@ -1,7 +1,7 @@
 # Absorpsi Code Context Engine ke Agent Core (Steal-Use)
 
 Tanggal: 2026-11-06
-Revisi: 2
+Revisi: 3
 Status: PROPOSED
 Jenis: Improvement
 Asal dan bukti: referensi lokal `code-context-engine` (paket `src/context_engine/`, lisensi MIT, folder referensi di luar repo ini). Bukti Agent Core berupa path relatif terhadap repo ini dan id catatan Cortex (lihat "Bukti dan ketidakpastian").
@@ -21,7 +21,7 @@ Tujuan: menambah kemampuan retrieval isi kode di owner code-intelligence, memaka
 
 Observasi (diperiksa langsung di sumber):
 - `src/mcp/code-intelligence-schemas.ts:11-16`: action `code_orient` (status, overview, clusters, topology, modules, stats, find, inspect, diagnostics, quarantine, metrics); `search` = `bm25 | substring`.
-- `src/mcp/code-intelligence-tools.ts:172-231`: handler `code_orient`. Action `find` diteruskan ke `grafel_find`.
+- `src/mcp/code-intelligence-tools.ts`: handler `code_orient`. Action `find` diteruskan ke `grafel_find`. Action `context` lewat helper `runContextSearch` (Fase A).
 - `src/code-intelligence/provider-capabilities.ts:4-17`: daftar tool inti Grafel. Tidak ada tool chunk atau embedding.
 - `src/code-intelligence/grafel-runtime.ts:102-124`: environment provider. `GRAFEL_EMBEDDING_URL: ''` (baris 113), `GRAFEL_EAGER_ALGO: 'false'` (baris 112).
 - `src/memory/embedder.ts:80-84`: embedder Memory hanya `cloudflare-workers-ai` (endpoint `api.cloudflare.com/.../ai/v1/embeddings`, model `@cf/google/embeddinggemma-300m`, 768 dimensi).
@@ -59,6 +59,20 @@ Hasil dossier mengoreksi atau mempertegas beberapa klaim Rev 1:
 10. Riwayat git hanya diindeks pada run full pertama (`indexer/pipeline.py:785`), padahal hook memanggil index non-full. Tidak diserap.
 11. Salinan CCE di folder referensi tampak dimodifikasi lokal (komentar merujuk embedder Agent Core). Lisensi MIT; atribusi tetap ke pemilik asli. Pilihan salinan lokal atau upstream diserahkan ke user.
 
+## Kritik peer (2026-11-06) dan tindak lanjut
+
+Sesi penilai memberi delapan temuan. Setiap temuan saya cek di kode sebelum memperbaiki:
+1. Indeks basi memberi rentang salah. Terbukti. Ditutup dengan validasi ukuran dan mtime per hit, rebuild saat berubah, dan pembuangan hit yang tetap tidak cocok.
+2. Cabang `action=context` melewati telemetri dan bookkeeping controller. Terbukti. Ditutup dengan helper `runContextSearch`. Deskripsi tool tidak lagi menyebut Grafel untuk fitur ini.
+3. Commit ganda, dan CODEBASE hanya di satu cabang. Terbukti. Commit di cabang aktif memuat kode, tes, changeset, proposal, dan entri CODEBASE. Entri CODEBASE dimasukkan lewat staging indeks saja, supaya edit pihak lain di working tree tidak ikut. Cabang duplikat tidak dipakai lagi.
+4. Masker tidak menutup kata sandi tanpa digit atau bersimbol. Terbukti. Ditutup dengan aturan kedua pada snippet. Nilai bertanda kutip selalu ditutup. Aturan `secret-assignment` di Memory tidak diubah karena di luar scope.
+5. Berkas besar terlewat diam-diam. Terbukti. Batas naik ke 2 MiB, dan setiap berkas yang dilewati dicatat dengan nama dan alasan.
+6. Deny list peka huruf besar, `secrets` bertingkat, dan junction. Terbukti untuk dua yang pertama. Deny list kini tidak peka huruf besar, `secrets` ditolak di kedalaman mana pun, dan junction dicek lewat `realpath`. Tes junction hanya berjalan di Windows.
+7. Celah tes. Terbukti. Tes baru mencakup cache basi, batas file dan waktu, berkas besar, biner, junction, folder terlarang bertingkat, kata sandi tanpa digit, single-flight, dan wiring action=context dengan telemetri.
+8. Tanpa timeout dan single-flight. Terbukti. Ditambahkan single-flight per root dan anggaran waktu build 20 detik. Truncation dilaporkan dengan alasannya.
+
+Tinjauan statis lewat workflow tidak selesai: dua reviewer tidak mencatat hasil, dan lensa ketiga tidak sempat dimulai. Penelusuran sendiri menemukan bug tambahan: indeks kosong ketika daftar berkas terpotong `maxFiles`. Bug itu diperbaiki sebelum tes hijau. Akibatnya belum ada tinjauan independen atas perbaikan ini; bukti yang tersedia adalah tes dan typecheck.
+
 ## Peta adopt / extend / build per kapabilitas CCE
 
 | # | Kapabilitas CCE | Padanan di Agent Core (owner) | Keputusan | Alasan singkat |
@@ -77,7 +91,7 @@ Hasil dossier mengoreksi atau mempertegas beberapa klaim Rev 1:
 | 12 | Grammar compression memori | tidak ada | CANDIDATE: Fase C | Risiko hilangnya negasi; nilai belum terukur |
 | 13 | Aturan output compression ke CLAUDE.md | caveman, ultracave, ponytail (level pengguna) | REJECT | Duplikat |
 | 14 | Ledger penghematan dan dashboard | `src/memory/retrieval-ledger.ts`, `src/effective-cost.ts`, `src/agent-context-accounting.ts` | PARTIAL: CANDIDATE Fase C | Baseline file penuh belum ada; rumus CCE tidak konsisten (koreksi 9) |
-| 15 | Masking secret dan PII | `src/memory/privacy-masking.ts`, `src/code-intelligence/changed-source-security.ts`, `src/security/redaction.ts` | ALREADY, dipakai ulang | Fase A memakai `maskSecrets` |
+| 15 | Masking secret dan PII | `src/memory/privacy-masking.ts`, `src/code-intelligence/changed-source-security.ts`, `src/security/redaction.ts` | ALREADY, dipakai ulang | Fase A memakai `maskSecrets` dan aturan kedua |
 | 16 | Pengecualian file kredensial | `.grafelignore` hanya `.env*` | EXTEND: Fase A lewat deny-list | `.grafelignore` Grafel tidak diubah |
 | 17 | Indeks inkremental, watcher, hook git | Grafel: index current, debounce reload 2000 ms | DEFER | Staleness belum terbukti di lapangan |
 | 18 | Governor sumber daya (ONNX, PSI, flock) | tidak ada ONNX | REJECT | Tidak relevan |
@@ -92,11 +106,12 @@ CCE ditulis dengan Python (tree-sitter, sqlite-vec, fastembed atau Ollama). Agen
 
 ## Mekanisme dan owner existing yang dipakai
 
-Fase A (implementasi lokal di branch `feat/code-context-lexical`):
+Fase A (implementasi lokal, lihat Keputusan untuk branch):
 - Permukaan: action baru `context` pada tool `code_orient` yang sudah ada. Tidak menambah tool, jumlah tool tetap. Owner: `src/code-intelligence/`.
-- Modul baru `src/code-intelligence/context-search.ts`: indeks window 40 baris (geser 32) per root workspace, skor BM25 atas token identifier, dedupe window yang tumpang tindih per file, snippet dibaca ulang dari sumber (sumber tetap otoritatif), di-mask sebelum dipotong.
+- Modul `src/code-intelligence/context-search.ts`: indeks window 40 baris (geser 32) per root workspace, skor BM25 atas token identifier, dedupe window yang tumpang tindih per file. Setiap hit dicek terhadap ukuran dan mtime file saat indeks dibuat. Snippet dibaca ulang dari sumber, lalu di-mask sebelum dipotong.
+- Handler `runContextSearch` di `src/mcp/code-intelligence-tools.ts` memakai pembukuan yang sama dengan tool provider: entri tracker, dan bookkeeping controller eksternal (read-only).
 - Dipakai ulang: `tokenizeRetrievalText` dan `flattenRetrievalTokens` (Memory), `maskSecrets` (Memory), `truncateText`, dan resolver workspace `CodeIntelligenceService.resolveWorkspace` (root = `worktreePath ?? cwd`).
-- Tidak ada Grafel baru, proses baru, jaringan, dependensi baru, atau state persisten baru. Cache indeks hanya di memori proses, 5 menit.
+- Tidak ada Grafel baru, proses baru, jaringan, dependensi baru, atau state persisten baru. Cache indeks hanya di memori proses, 60 detik, dengan single-flight.
 
 Fase B (menunggu keputusan user):
 - Impor baca-saja indeks CCE (chunk, path, rentang baris, vektor, kunci hash) ke owner code-intelligence. Embedding ulang hanya untuk chunk baru atau berubah.
@@ -110,16 +125,16 @@ Fase C (kandidat, tidak dikerjakan):
 ## Scope, batas Native, risiko dan otorisasi
 
 Scope Fase A:
-- File: `src/code-intelligence/context-search.ts` (baru), `src/mcp/code-intelligence-schemas.ts` (tambah nilai enum), `src/mcp/code-intelligence-tools.ts` (cabang `context` dan import), `tests/code-context-search.test.ts` (baru), `docs/CODEBASE.md` (entri dan baris tabel code understanding, CRLF), `.changeset/code-context-lexical-search.md` (intent minor), dan dokumen ini.
+- File: `src/code-intelligence/context-search.ts` (baru), `src/mcp/code-intelligence-schemas.ts` (nilai enum), `src/mcp/code-intelligence-tools.ts` (helper `runContextSearch`, cabang `context`, deskripsi tool), `tests/code-context-search-hardening.test.ts` (baru, menggantikan `tests/code-context-search.test.ts` yang dihapus), `docs/CODEBASE.md` (entri dan baris tabel code understanding, CRLF; hanya hunk milik Fase A), `.changeset/code-context-lexical-search.md` (intent minor), dan dokumen ini.
 - Di luar scope: Grafel, `.grafelignore`, Memory, Learning, Native, promosi ke Platform, push, dan release.
 
 Batas Native: tidak ada perubahan jalur Native, tidak ada grant tool baru, tidak ada proses yang berjalan terus.
 
 Risiko dan mitigasi:
-- Membaca konten terlarang: deny-list folder (`runtime`, `secrets`, `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT`, `Backups`, `release`, `SubProject`, `rdc`, `.rdc-standalone`, `launcher-publish`, `_artifacts`, `.grafel`, `.tmp`; di mana saja: `.git`, `node_modules`, `dist`, `build`, `coverage`, `bin`, `obj`) dan deny-list nama file (`.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.kdbx`, `*.keystore`, `*.jks`, `id_rsa*`, `credentials*`, `secret*`). File yang dikecualikan tidak pernah dibuka. Symlink dilewati.
-- Kebocoran rahasia di snippet: window di-mask dengan `maskSecrets` sebelum dipotong. Bila masking gagal, snippet diganti placeholder. Masking bersifat best-effort per window: rahasia yang terbelah di batas window tidak tertangkap.
-- Basi: cache indeks 5 menit. `builtAt` dan `ageMs` dilaporkan.
-- Indeks parsial pada pohon besar: batas 4.000 file, 256 KiB per file, dan 60.000 window. `skippedFiles` dan `truncated` dilaporkan.
+- Membaca konten terlarang: deny-list folder tidak peka huruf besar, berlaku di kedalaman mana pun: `runtime`, `release`, `backups`, `secrets`, `dist`, `build`, `coverage`, `bin`, `obj`, `.git`, `node_modules`, `_artifacts`, `launcher-publish`, `.tmp`, dan folder yang dilindungi. Di akar saja: `SubProject`, `rdc`, `.rdc-standalone`, `.grafel`. Nama file yang ditolak: `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.kdbx`, `*.keystore`, `*.jks`, `id_rsa*`, `credentials*`, `secrets*`, `.npmrc`, `.pypirc`, `.netrc`, `.pgpass`, `appsettings*.json`, dan `*.local.*`. Symlink dilewati. Junction dicek lewat `realpath`, dan direktori yang keluar dari root tidak dimasuki. File yang dikecualikan tidak pernah dibuka.
+- Kebocoran rahasia di snippet: window di-mask dengan `maskSecrets`, lalu dengan aturan kedua untuk nilai key-value. Nilai bertanda kutip selalu ditutup. Nilai tanpa kutip ditutup bila panjang atau mengandung digit, supaya tipe seperti `password: string` tetap terbaca. Masking bersifat best-effort per window: rahasia yang terbelah di batas window tidak tertangkap. Aturan `secret-assignment` di Memory tidak diubah karena di luar scope.
+- Basi: cache indeks 60 detik. Setiap hit dicek terhadap ukuran dan mtime file. Hit yang berubah memicu satu rebuild. Hit yang tetap tidak cocok dibuang (`staleDropped`). File baru di dalam TTL belum terlihat sampai indeks dibangun ulang.
+- Indeks parsial: batas 4.000 file, 2 MiB per file, 60.000 window, dan anggaran waktu build 20 detik. Berkas yang dilewati dicatat dengan nama dan alasan (`skippedSamples`, `skippedByReason`). Alasan truncation dilaporkan (`truncatedReason`).
 - SubProject dikecualikan, mengikuti `.grafelignore`. Ini berbeda dari indeks CCE yang memasukkannya. Keputusan user.
 - Lexical tidak menangkap sinonim. Ditangani di Fase B.
 - Otorisasi: keputusan Agent Core dari user (auto-accept Agent Core, 2026-11-04), arahan absorpsi (Cortex `11f4d1aa`), dan egress kode ke Cloudflare untuk indeks yang sudah dibuat user (Cortex `841abb1c`). Data runtime dan memori tetap tidak keluar dari mesin. `runtime` dan `secrets` tetap dikecualikan. Dokumen ini bukan persetujuan Fase B.
@@ -133,24 +148,25 @@ Keterbatasan: lexical saja. Window baris bisa memotong fungsi (mitigasi: overlap
 ## Acceptance, evaluasi dan rollback
 
 Acceptance fungsional, bukan kecepatan:
-1. `npx vitest run tests/code-context-search.test.ts` lulus: 4 dari 4 (dicapai pada percobaan kedua, setelah percobaan pertama merah karena modul belum ada).
-2. `npx tsc -p tsconfig.json --noEmit` lulus untuk seluruh proyek.
-3. Tes membuktikan: kueri isi menemukan file dan rentang baris yang benar; file di `runtime/`, `.env`, dan `*.pem` tidak pernah muncul; token rahasia di snippet ter-mask; jumlah hasil dibatasi `limit`; root tidak valid ditolak.
+1. `npx vitest run tests/code-context-search-hardening.test.ts` lulus: 11 dari 11. Percobaan pertama merah (8 gagal, masing-masing menangkap bug yang dikritik). Percobaan kedua hijau.
+2. Regresi: `tests/mcp-manifest-contract.test.ts` dan `tests/code-intelligence-{exact-graph,health-refresh,finalization,post-v033}.test.ts` lulus: 45 dari 45.
+3. `npx tsc -p tsconfig.json --noEmit` lulus untuk seluruh proyek.
 4. `npm run build` belum lulus di `path:check` karena snapshot `docs/PROJECT-STRUCTURE.md` stale. Kondisi ini sudah ada di HEAD `241ad96a` (diperiksa pada salinan HEAD). Fase A tidak menambah direktori. Perbaikannya adalah `npm run structure:sync` oleh owner.
-5. Verifikasi di PC owner setelah promosi: `code_orient(action=context)` pada Platform. Hanya fungsional.
+5. Verifikasi di PC owner setelah promosi: `code_orient(action=context)` pada Platform. Hanya fungsional. Tidak ada benchmark.
 
 Rollback: revert commit di branch. Tidak ada state persisten, jadi tidak perlu migrasi.
 
 ## Riwayat revisi
 
 - Rev 1 (2026-11-06): draf pertama dari studi dan verifikasi di atas.
-- Rev 2 (2026-11-06): dossier CCE selesai dan dikoreksi (bagian Koreksi). Fase A diimplementasi lokal di branch `feat/code-context-lexical`. Tes hijau dan typecheck lulus. Peta keputusan diperbarui.
+- Rev 2 (2026-11-06): dossier CCE selesai dan dikoreksi (bagian Koreksi). Fase A diimplementasi lokal.
+- Rev 3 (2026-11-06): kritik peer atas implementasi diterima dan diperbaiki (bagian Kritik peer). Tes hardening 11/11 hijau; regresi 45/45 hijau. Cabang duplikat `feat/code-context-lexical` tidak dipakai lagi.
 
 ## Keputusan pengguna dan scope
 
 Belum ada keputusan; menunggu APPROVE / REVISE / HOLD / REJECT.
 
-Status implementasi: Fase A ada di branch `feat/code-context-lexical`, satu commit di atas `241ad96a`. Belum dipromosikan ke Platform, belum di-push, dan belum dijalankan di Platform.
+Status implementasi: Fase A ada di branch aktif `fix/agent-core-tool-latency-and-ui-cards`, di atas commit `7944f5ff`, termasuk perbaikan kritik. Belum dipromosikan ke Platform, belum di-push, dan belum dijalankan di Platform. Commit `3ad0ad48` di cabang duplikat `feat/code-context-lexical` tidak dipakai lagi.
 
 Keputusan yang diperlukan dari user:
 1. Fase A: setujui, revisi, atau tolak.
