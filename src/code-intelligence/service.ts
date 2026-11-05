@@ -1049,7 +1049,7 @@ export class CodeIntelligenceService {
     return this.contextGraphEvidence(context, snapshot, refs, graphs).index;
   }
 
-  private async assertRequestedRef(context: CodeWorkspaceContext, allowMissingForIndex = false): Promise<void> {
+  async assertRequestedRef(context: CodeWorkspaceContext, allowMissingForIndex = false): Promise<void> {
     if (!context.ref) return;
     this.assertCapability('refGraphs');
 

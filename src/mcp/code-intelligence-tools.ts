@@ -3,7 +3,7 @@ import type { CallToolResult } from '@modelcontextprotocol/client';
 import type { CodeIntelligenceService } from '../code-intelligence/service.js';
 import { buildChangedSymbolReview, revisionOptionError } from '../code-intelligence/change-review.js';
 import { scanChangedSourceSecurity } from '../code-intelligence/changed-source-security.js';
-import { CODE_CONTEXT_PROVIDER, searchCodeContext } from '../code-intelligence/context-search.js';
+import { CODE_CONTEXT_PROVIDER, assertSearchRoot, searchCodeContext } from '../code-intelligence/context-search.js';
 import type { SemanticIdeService } from '../semantic-ide/service.js';
 import type { ExternalControllerLearningService } from '../learning/external-controller.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
@@ -150,6 +150,15 @@ async function runProvider(
   }
 }
 
+// Telemetry never changes a search result: a record that fails is dropped, not reported as a failed search.
+function recordSafely(record: () => void): void {
+  try {
+    record();
+  } catch {
+    // dropped by design
+  }
+}
+
 // Local lexical search has no provider call, but it takes the same path as provider tools:
 // tracker entry, controller bookkeeping (read-only), and an error result instead of a throw.
 async function runContextSearch(
@@ -166,10 +175,13 @@ async function runContextSearch(
   let result: any;
   try {
     const resolved = await service.resolveWorkspace(context);
+    // The working tree is searched only when it is at the requested ref.
+    if (context.ref) await service.assertRequestedRef({ ...resolved, ref: context.ref });
     const root = resolved.worktreePath ?? resolved.cwd;
+    assertSearchRoot(root, resolved.cwd);
     const payload = await searchCodeContext({ root, query, ...(limit !== undefined ? { limit } : {}) });
     result = textResult(payload);
-    activityTracker.record(
+    recordSafely(() => activityTracker.record(
       'CODE_INTELLIGENCE',
       'success',
       `${family} completed`,
@@ -187,9 +199,9 @@ async function runContextSearch(
         truncated: payload.index.truncated,
         rebuilt: payload.index.rebuilt,
       },
-    );
+    ));
   } catch (error) {
-    activityTracker.record(
+    recordSafely(() => activityTracker.record(
       'CODE_INTELLIGENCE',
       'info',
       `${family} unavailable`,
@@ -203,7 +215,7 @@ async function runContextSearch(
         durationMs: Date.now() - started,
         errorFamily: compactErrorFamily(error),
       },
-    );
+    ));
     result = errorResult(error instanceof Error ? error.message : String(error));
   }
   return externalControllerToolResult({
@@ -240,7 +252,7 @@ export function registerCodeIntelligenceTools(
 
   server.registerTool('code_orient', {
     title: 'Code Intelligence Orient',
-    description: 'Structural code orientation, freshness, diagnostics, quarantine visibility, entity discovery, and inspection backed by project-local Grafel. action=context is a local lexical search (no Grafel). Source files remain authoritative.',
+    description: 'Structural code orientation, freshness, diagnostics, quarantine visibility, entity discovery, and inspection backed by project-local Grafel. action=context is a local lexical search (no Grafel): at most 20 masked snippets, each re-read from the source. Source files remain authoritative.',
     inputSchema: schemas.codeOrient.shape,
     annotations: { title: 'Code Intelligence Orient', readOnlyHint: true, openWorldHint: false },
   }, async (args: any) => {

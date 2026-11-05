@@ -3,12 +3,16 @@ import type { Dirent } from 'node:fs';
 import path from 'node:path';
 import { flattenRetrievalTokens, tokenizeRetrievalText } from '../memory/identifier-tokenizer.js';
 import { maskSecrets } from '../memory/privacy-masking.js';
+import { isCredentialFileName } from '../security/credential-names.js';
 import { truncateText } from '../text-bounds.js';
 
 // Lexical (BM25) search over bounded line windows of the workspace source.
 // Source files stay authoritative: every hit is checked against the file's size and mtime
 // captured at indexing time, re-read from disk, and masked before it is returned. A hit whose
 // file changed is never returned with a range from the old text; the index is rebuilt instead.
+// A new, renamed, or deleted file changes its directory's mtime, so each query re-checks the
+// directories (one lstat each) and rebuilds when one changed. An edit to an indexed file that adds
+// no hit is visible after at most CACHE_TTL_MS; index.ageMs reports how old the index is.
 // No embeddings, no network, no persisted state. The index lives in process memory.
 
 export const CODE_CONTEXT_PROVIDER = 'agent-core-lexical' as const;
@@ -21,6 +25,10 @@ const MAX_LIMIT = 20;
 const MAX_SNIPPET_CHARS = 1200;
 const MAX_RESPONSE_CHARS = 24000;
 const SKIP_SAMPLE_LIMIT = 50;
+// Upper bound on paths collected by the walk. The file cap (maxFiles) is applied after priority ordering.
+const WALK_HARD_CAP = 50000;
+// Index rebuilds one query may trigger while directories keep changing under it.
+const MAX_DIRECTORY_REBUILDS = 2;
 const BM25_K1 = 1.2;
 const BM25_B = 0.75;
 
@@ -39,24 +47,30 @@ const DEFAULT_LIMITS: CodeContextLimits = {
 };
 
 export type SkipReason = 'too-large' | 'binary' | 'unreadable' | 'link' | 'outside-root';
-export type IndexTruncation = 'max-files' | 'max-chunks' | 'time-budget';
+export type IndexTruncation = 'max-files' | 'max-chunks' | 'time-budget' | 'token-limit';
 
-// Lowercase names, compared case-insensitively. Anywhere in the tree: the names the repository
-// path policy already excludes, plus nested secrets folders and the protected folder.
+// Lowercase names, compared case-insensitively, anywhere in the tree: the names the repository path policy
+// already excludes, plus private folders. A denied name is dropped silently, links included, so its name never
+// reaches the skip samples.
 const DENY_ANYWHERE = new Set([
   '.git', 'node_modules', 'dist', 'build', 'coverage', 'bin', 'obj', 'runtime', 'release',
   'backups', 'secrets', '_artifacts', 'launcher-publish', '.tmp', 'do not touch without instruction explicit',
+  '.ssh', '.aws', '.gnupg', '.docker',
 ]);
 // Only directly under the workspace root.
 const DENY_TOP_LEVEL = new Set(['subproject', 'rdc', '.rdc-standalone', '.grafel']);
-const DENY_FILE_NAME: RegExp[] = [
-  /^\.env(\..+)?$/i,
-  /\.(pem|key|p12|pfx|kdbx|keystore|jks|pkcs12)$/i,
-  /^id_(rsa|dsa|ecdsa|ed25519)/i,
+// Names that hold secrets, for files and folders alike. isCredentialFileName (security/credential-names) adds
+// .env files, key and certificate extensions, and editor backup copies of them.
+const DENY_NAME: RegExp[] = [
   /^(credentials?|secrets?)([._-].*)?$/i,
-  /^\.(npmrc|pypirc|netrc|pgpass)$/i,
+  /^(client[_-]?secrets?|service[_-]?account|tokens?)([._-].*)?\.json$/i,
+  /adminsdk.*\.json$/i,
+  /^local\.settings\.json$/i,
   /\.local\.(json|ya?ml|toml|env|ini|xml)$/i,
   /^appsettings(\.[^.]+)?\.json$/i,
+  /^id_(rsa|dsa|ecdsa|ed25519)/i,
+  /^\.pgpass$/i,
+  /\.(kdbx|pkcs12)$/i,
 ];
 const TEXT_EXTENSIONS = new Set([
   '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.md', '.yml', '.yaml', '.toml',
@@ -91,8 +105,8 @@ export interface CodeContextResult {
   query: string;
   tokens: string[];
   index: {
-    builtAt: string;
-    ageMs: number;
+    builtAt: string | null;
+    ageMs: number | null;
     files: number;
     chunks: number;
     skippedFiles: number;
@@ -131,6 +145,7 @@ interface Index {
   df: Map<string, number>;
   avgLength: number;
   files: Map<string, FileSignature>;
+  dirs: Map<string, number>;
   skips: SkipLedger;
   truncated: IndexTruncation | null;
 }
@@ -172,13 +187,18 @@ function isInside(root: string, target: string): boolean {
   return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
-function isDeniedDirectory(name: string, atTop: boolean): boolean {
-  const lower = name.toLowerCase();
-  return DENY_ANYWHERE.has(lower) || (atTop && DENY_TOP_LEVEL.has(lower));
+function isDeniedName(name: string): boolean {
+  return isCredentialFileName(name) || DENY_NAME.some(pattern => pattern.test(name));
 }
 
-function isDeniedFileName(name: string): boolean {
-  return DENY_FILE_NAME.some(pattern => pattern.test(name));
+function isDeniedEntry(name: string, atTop: boolean): boolean {
+  const lower = name.toLowerCase();
+  return DENY_ANYWHERE.has(lower) || (atTop && DENY_TOP_LEVEL.has(lower)) || isDeniedName(name);
+}
+
+// A path relative to the root is denied when any of its segments is.
+function deniedRelativePath(relative: string): boolean {
+  return relative.split(/[\\/]/).some((segment, index) => isDeniedEntry(segment, index === 0));
 }
 
 function recordSkip(ledger: SkipLedger, relative: string, reason: SkipReason): void {
@@ -198,13 +218,18 @@ async function readEntries(directory: string): Promise<Dirent[] | null> {
 async function collectCandidates(
   root: string,
   rootReal: string,
-  limits: CodeContextLimits,
   ledger: SkipLedger,
-): Promise<{ files: string[]; truncated: IndexTruncation | null }> {
+  deadline: number,
+): Promise<{ files: string[]; dirs: Map<string, number>; truncated: IndexTruncation | null }> {
   const files: string[] = [];
+  const dirs = new Map<string, number>();
   const pending: Array<{ dir: string; relDir: string }> = [{ dir: root, relDir: '' }];
   while (pending.length > 0) {
+    if (Date.now() >= deadline) return { files, dirs, truncated: 'time-budget' };
     const current = pending.pop()!;
+    // Directory mtime is read before its entries: a change after this point forces a rebuild, never a miss.
+    const dirInfo = await lstat(current.dir).catch(() => null);
+    if (dirInfo) dirs.set(current.relDir, dirInfo.mtimeMs);
     const entries = await readEntries(current.dir);
     if (!entries) {
       recordSkip(ledger, current.relDir || '.', 'unreadable');
@@ -214,13 +239,13 @@ async function collectCandidates(
     for (const entry of entries) {
       const relative = current.relDir ? `${current.relDir}/${entry.name}` : entry.name;
       const absolute = path.join(current.dir, entry.name);
+      if (isDeniedEntry(entry.name, current.relDir === '')) continue;
       if (entry.isSymbolicLink()) {
         recordSkip(ledger, relative, 'link');
         continue;
       }
       if (entry.isDirectory()) {
-        if (isDeniedDirectory(entry.name, current.relDir === '')) continue;
-        // A Windows junction is reported as a directory; its real target decides.
+        // A Windows junction is reported as a link above; a real folder must still resolve inside the root.
         const real = await realpath(absolute).catch(() => null);
         if (!real || !isInside(rootReal, real)) {
           recordSkip(ledger, relative, 'outside-root');
@@ -229,31 +254,112 @@ async function collectCandidates(
         pending.push({ dir: absolute, relDir: relative });
         continue;
       }
-      if (!entry.isFile() || isDeniedFileName(entry.name)) continue;
+      if (!entry.isFile()) continue;
       if (!TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
-      if (files.length >= limits.maxFiles) return { files, truncated: 'max-files' };
+      if (files.length >= WALK_HARD_CAP) return { files, dirs, truncated: 'max-files' };
       files.push(relative);
     }
   }
-  return { files, truncated: null };
+  return { files, dirs, truncated: null };
 }
 
 type FileRead = { ok: true; text: string; signature: FileSignature } | { ok: false; reason: SkipReason };
 
-async function readTextFile(absolute: string, maxFileBytes: number): Promise<FileRead> {
-  const info = await lstat(absolute).catch(() => null);
-  if (!info) return { ok: false, reason: 'unreadable' };
-  if (info.isSymbolicLink()) return { ok: false, reason: 'link' };
-  if (!info.isFile()) return { ok: false, reason: 'unreadable' };
-  if (info.size > maxFileBytes) return { ok: false, reason: 'too-large' };
-  const buffer = await readFile(absolute).catch(() => null);
-  if (!buffer) return { ok: false, reason: 'unreadable' };
-  if (buffer.subarray(0, 8192).includes(0)) return { ok: false, reason: 'binary' };
-  return { ok: true, text: buffer.toString('utf8'), signature: { mtimeMs: info.mtimeMs, size: info.size } };
+// The signature is taken before the read and must still hold after it: a file that changes mid-read is read
+// again, so the returned text and its signature always describe the same content.
+async function readTextFile(absolute: string, maxFileBytes: number, rootReal?: string): Promise<FileRead> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const before = await lstat(absolute).catch(() => null);
+    if (!before) return { ok: false, reason: 'unreadable' };
+    if (before.isSymbolicLink()) return { ok: false, reason: 'link' };
+    if (!before.isFile()) return { ok: false, reason: 'unreadable' };
+    if (before.size > maxFileBytes) return { ok: false, reason: 'too-large' };
+    // Per-hit and staleness reads come after indexing, so the real path is checked again (junctions, folders swapped in).
+    if (rootReal && !(await resolvesInside(rootReal, absolute))) return { ok: false, reason: 'outside-root' };
+    const buffer = await readFile(absolute).catch(() => null);
+    if (!buffer) return { ok: false, reason: 'unreadable' };
+    const after = await lstat(absolute).catch(() => null);
+    if (!after || after.mtimeMs !== before.mtimeMs || after.size !== before.size) continue;
+    if (buffer.length > maxFileBytes) return { ok: false, reason: 'too-large' };
+    if (buffer.subarray(0, 8192).includes(0)) return { ok: false, reason: 'binary' };
+    return { ok: true, text: buffer.toString('utf8'), signature: { mtimeMs: before.mtimeMs, size: before.size } };
+  }
+  return { ok: false, reason: 'unreadable' };
 }
 
-function tokensOf(text: string): string[] {
-  return flattenRetrievalTokens(tokenizeRetrievalText(text));
+// The real path (links and intermediate folders resolved) must stay under the root and avoid denied names.
+async function resolvesInside(rootReal: string, absolute: string): Promise<boolean> {
+  const real = await realpath(absolute).catch(() => null);
+  return real !== null && isInside(rootReal, real) && !deniedRelativePath(path.relative(rootReal, real));
+}
+
+function tokensOf(text: string): { tokens: string[]; truncated: boolean } {
+  const parsed = tokenizeRetrievalText(text);
+  return { tokens: flattenRetrievalTokens(parsed), truncated: parsed.truncated === true };
+}
+
+const PRIORITY_ROOTS = ['src', 'tests', 'scripts'];
+
+// Lower rank is indexed first. Docs go last, so a cut never drops code in favour of prose.
+function filePriority(relative: string): number {
+  const first = (relative.split('/')[0] ?? '').toLowerCase();
+  const rank = PRIORITY_ROOTS.indexOf(first);
+  if (rank >= 0) return rank;
+  return first === 'docs' ? 4 : 3;
+}
+
+// One lstat per traversed directory. An added, renamed, or deleted entry changes that directory's mtime.
+async function directoriesChanged(root: string, index: Index): Promise<boolean> {
+  for (const [relDir, mtimeMs] of index.dirs) {
+    const info = await lstat(relDir ? path.join(root, relDir) : root).catch(() => null);
+    if (!info || !info.isDirectory() || info.mtimeMs !== mtimeMs) return true;
+  }
+  return false;
+}
+
+// Key-value secrets, whatever the identifier: dbPassword, DB_PASSWORD, access_token, and a JSON key such as
+// "token": "...". There is no word boundary before the keyword, so compound names match, and the pattern starts
+// at the keyword, so a long identifier costs nothing extra. Separators: ':' (YAML, TypeScript, Python), '='
+// (env, ini), ':=' (Go). A type annotation may sit between the key and the separator: password: string = "...".
+// Groups: 1 = key and separator, 2 = quote of a quoted value, 3 = quoted value, 4 = bare value.
+const SECRET_ASSIGNMENT = /((?:password|passwd|pwd|secret[_-]?key|secret|token|api[_-]?key|client[_-]?secret|access[_-]?key|private[_-]?key)["'`]?(?:\s*:\s*[A-Za-z_][\w.<>[\]|]*)?\s*(?::=|[:=])\s*)(?:(["'`])((?:(?!\2)[^\r\n])+)\2|([^\s"'`()[\]{};,<>]+))/gi;
+
+// Bare values that name a type or a literal are not secrets: `password: string` stays readable.
+const NON_SECRET_VALUES = new Set([
+  'string', 'number', 'boolean', 'unknown', 'any', 'object', 'void', 'never', 'bigint', 'symbol',
+  'null', 'undefined', 'true', 'false', 'str', 'int', 'float', 'bool', 'bytes', 'none', 'nil',
+]);
+
+function maskAssignment(match: string, prefix: string, quote: string | undefined, _quoted: string | undefined, bare: string | undefined): string {
+  if (quote) return `${prefix}${quote}[REDACTED:secret]${quote}`;
+  if (bare !== undefined && !NON_SECRET_VALUES.has(bare.toLowerCase())) return `${prefix}[REDACTED:secret]`;
+  return match;
+}
+
+// PEM key blocks of any label, up to their END line or the end of the text.
+const PRIVATE_KEY_BLOCK = /-----BEGIN ([A-Z0-9 ]+)-----[\s\S]*?(?:-----END \1-----|(?![\s\S]))/g;
+
+// Whole-file masking, applied before windowing. A window that starts inside a key body has no BEGIN line, so
+// the key must already be blank in the text the windows are cut from. Each key line is blanked except the first,
+// so line numbers do not move. Indexing and snippets both read this text.
+function maskFileText(text: string): string {
+  const keysBlanked = text.replace(PRIVATE_KEY_BLOCK, block => block
+    .split(/\r?\n/)
+    .map((_line, index) => (index === 0 ? '-----BEGIN [REDACTED:key-block]' : ''))
+    .join('\n'));
+  return keysBlanked.replace(SECRET_ASSIGNMENT, maskAssignment);
+}
+
+function maskSnippet(raw: string): { text: string; truncated: boolean } {
+  let masked: string;
+  try {
+    masked = maskSecrets(raw).text.replace(SECRET_ASSIGNMENT, maskAssignment);
+  } catch {
+    return { text: '[REDACTED:snippet-unavailable]', truncated: false };
+  }
+  // Mask before truncating so a secret is never cut in half and left unmasked.
+  const bounded = truncateText(masked, MAX_SNIPPET_CHARS);
+  return { text: bounded, truncated: bounded.length < masked.length };
 }
 
 async function buildIndex(root: string, limits: CodeContextLimits): Promise<Index> {
@@ -261,17 +367,20 @@ async function buildIndex(root: string, limits: CodeContextLimits): Promise<Inde
   const deadline = Date.now() + limits.buildBudgetMs;
   const rootReal = await realpath(root);
   const skips: SkipLedger = { count: 0, byReason: {}, samples: [] };
-  const walk = await collectCandidates(root, rootReal, limits, skips);
+  const walk = await collectCandidates(root, rootReal, skips, deadline);
+  const ordered = [...walk.files].sort((a, b) => filePriority(a) - filePriority(b) || a.localeCompare(b));
+  const candidates = ordered.slice(0, limits.maxFiles);
   // The walk's own truncation (max-files) still leaves a usable partial index: index what was collected.
   // Only the time and chunk limits stop the build loop early.
-  let truncated: IndexTruncation | null = walk.truncated;
+  let truncated: IndexTruncation | null = walk.truncated ?? (ordered.length > limits.maxFiles ? 'max-files' : null);
   let stopped = false;
+  let tokenLimited = false;
   const files = new Map<string, FileSignature>();
   const chunks: Chunk[] = [];
   const df = new Map<string, number>();
   let totalLength = 0;
 
-  for (const relative of walk.files) {
+  for (const relative of candidates) {
     if (stopped) break;
     if (Date.now() >= deadline) {
       truncated = 'time-budget';
@@ -283,7 +392,8 @@ async function buildIndex(root: string, limits: CodeContextLimits): Promise<Inde
       continue;
     }
     files.set(relative, read.signature);
-    const lines = read.text.split(/\r?\n/);
+    // Windows are cut from the masked text, so a query for a secret value cannot match it.
+    const lines = maskFileText(read.text).split(/\r?\n/);
     for (let start = 0; start < lines.length; start += STRIDE_LINES) {
       if (chunks.length >= limits.maxChunks) {
         truncated = 'max-chunks';
@@ -291,17 +401,19 @@ async function buildIndex(root: string, limits: CodeContextLimits): Promise<Inde
         break;
       }
       const end = Math.min(lines.length, start + WINDOW_LINES);
-      const tokens = tokensOf(`${relative}\n${lines.slice(start, end).join('\n')}`);
-      if (tokens.length > 0) {
+      const piece = tokensOf(`${relative}\n${lines.slice(start, end).join('\n')}`);
+      if (piece.truncated) tokenLimited = true;
+      if (piece.tokens.length > 0) {
         const tf = new Map<string, number>();
-        for (const token of tokens) tf.set(token, (tf.get(token) ?? 0) + 1);
-        chunks.push({ path: relative, startLine: start + 1, endLine: end, length: tokens.length, tf });
-        totalLength += tokens.length;
+        for (const token of piece.tokens) tf.set(token, (tf.get(token) ?? 0) + 1);
+        chunks.push({ path: relative, startLine: start + 1, endLine: end, length: piece.tokens.length, tf });
+        totalLength += piece.tokens.length;
         for (const token of tf.keys()) df.set(token, (df.get(token) ?? 0) + 1);
       }
       if (end >= lines.length) break;
     }
   }
+  if (truncated === null && tokenLimited) truncated = 'token-limit';
 
   return {
     builtAt: Date.now(),
@@ -309,25 +421,31 @@ async function buildIndex(root: string, limits: CodeContextLimits): Promise<Inde
     df,
     avgLength: chunks.length > 0 ? totalLength / chunks.length : 0,
     files,
+    dirs: walk.dirs,
     skips,
     truncated,
   };
 }
 
-/** Single-flight: concurrent cold callers share one build; a forced rebuild waits for any build in flight. */
-async function getIndex(root: string, limits: CodeContextLimits, forceRebuild = false): Promise<Index> {
+/**
+ * Single-flight: callers share one build in flight. `observed` is the index a caller found out of date: a forced
+ * fetch then returns a newer cached index instead of building again.
+ */
+async function getIndex(root: string, limits: CodeContextLimits, observed?: Index): Promise<Index> {
   const key = cacheKey(root, limits);
   const pending = pendingBuilds.get(key);
-  if (forceRebuild) {
-    if (pending) await pending.catch(() => undefined);
-  } else {
-    const cached = indexCache.get(key);
-    if (cached && cached.expiresAt > Date.now()) return cached.index;
-    if (pending) return pending;
+  if (pending) return pending;
+  const cached = indexCache.get(key);
+  if (cached && cached.expiresAt > Date.now() && (observed === undefined || cached.index !== observed)) {
+    return cached.index;
   }
   const build: Promise<Index> = buildIndex(root, limits)
     .then(index => {
-      indexCache.set(key, { index, expiresAt: Date.now() + CACHE_TTL_MS });
+      const now = Date.now();
+      for (const [entryKey, entry] of indexCache) {
+        if (entry.expiresAt <= now) indexCache.delete(entryKey);
+      }
+      indexCache.set(key, { index, expiresAt: now + CACHE_TTL_MS });
       return index;
     })
     .finally(() => {
@@ -385,39 +503,47 @@ function selectTop(terms: string[], index: Index, limit: number): Scored[] {
   return selected;
 }
 
-async function isStale(root: string, index: Index, relative: string): Promise<boolean> {
+async function isStale(root: string, rootReal: string, index: Index, relative: string): Promise<boolean> {
   const signature = index.files.get(relative);
   if (!signature) return true;
-  const info = await lstat(path.join(root, relative)).catch(() => null);
-  return !info
-    || info.isSymbolicLink()
-    || !info.isFile()
-    || info.mtimeMs !== signature.mtimeMs
-    || info.size !== signature.size;
-}
-
-// Second pass after maskSecrets: key-value secrets whose values have no digits or symbols
-// (correcthorsebattery) or contain symbols (P@ssw0rd!). Quoted values are always masked;
-// bare values are masked when they are long or contain a digit, so type names such as
-// `password: string` stay readable.
-const SECRET_ASSIGNMENT = /(\b(?:password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret|access[_-]?key|private[_-]?key)\b["']?\s*[:=]\s*)(?:(["'])((?:(?!\2)[^\r\n])+)\2|([^\s"'`()[\]{};,<>]+))/gi;
-
-function maskAssignment(match: string, prefix: string, quote: string | undefined, _quoted: string | undefined, bare: string | undefined): string {
-  if (quote) return `${prefix}${quote}[REDACTED:secret]${quote}`;
-  if (bare && (bare.length >= 8 || (/\d/.test(bare) && bare.length >= 6))) return `${prefix}[REDACTED:secret]`;
-  return match;
-}
-
-function maskSnippet(raw: string): { text: string; truncated: boolean } {
-  let masked: string;
-  try {
-    masked = maskSecrets(raw).text.replace(SECRET_ASSIGNMENT, maskAssignment);
-  } catch {
-    return { text: '[REDACTED:snippet-unavailable]', truncated: false };
+  const absolute = path.join(root, relative);
+  const info = await lstat(absolute).catch(() => null);
+  if (!info || info.isSymbolicLink() || !info.isFile() || info.mtimeMs !== signature.mtimeMs || info.size !== signature.size) {
+    return true;
   }
-  // Mask before truncating so a secret is never cut in half and left unmasked.
-  const bounded = truncateText(masked, MAX_SNIPPET_CHARS);
-  return { text: bounded, truncated: bounded.length < masked.length };
+  return !(await resolvesInside(rootReal, absolute));
+}
+
+function emptyIndexMeta(): CodeContextResult['index'] {
+  return {
+    builtAt: null,
+    ageMs: null,
+    files: 0,
+    chunks: 0,
+    skippedFiles: 0,
+    skippedByReason: {},
+    skippedSamples: [],
+    truncated: false,
+    truncatedReason: null,
+    rebuilt: false,
+    staleDropped: 0,
+  };
+}
+
+/**
+ * Refuses a search root that repository policy does not cover: a folder above the repository, a denied folder
+ * inside it, or a separate folder (a worktree outside the repository) whose own name is denied.
+ */
+export function assertSearchRoot(root: string, repoRoot: string): void {
+  const target = path.resolve(root);
+  const repo = path.resolve(repoRoot);
+  if (target === repo) return;
+  if (isInside(repo, target)) {
+    if (deniedRelativePath(path.relative(repo, target))) throw new Error('CODE_CONTEXT_ROOT_DENIED');
+    return;
+  }
+  if (isInside(target, repo)) throw new Error('CODE_CONTEXT_ROOT_TOO_BROAD');
+  if (isDeniedName(path.basename(target))) throw new Error('CODE_CONTEXT_ROOT_DENIED');
 }
 
 export async function searchCodeContext(input: CodeContextInput): Promise<CodeContextResult> {
@@ -426,20 +552,30 @@ export async function searchCodeContext(input: CodeContextInput): Promise<CodeCo
   if (!info?.isDirectory()) throw new Error('CODE_CONTEXT_ROOT_INVALID');
   const limit = Math.min(MAX_LIMIT, Math.max(1, Math.trunc(input.limit ?? DEFAULT_LIMIT)));
   const terms = queryTerms(input.query);
+  // A query with no searchable terms is answered without building or reading an index.
+  if (terms.length === 0) {
+    return { provider: CODE_CONTEXT_PROVIDER, status: 'empty-query', query: input.query, tokens: [], index: emptyIndexMeta(), hits: [] };
+  }
   const limits = resolveLimits(input.limits);
+  const rootReal = await realpath(root);
 
   let index = await getIndex(root, limits);
-  let selected = terms.length > 0 && index.chunks.length > 0 ? selectTop(terms, index, limit) : [];
+  // A new, renamed, or deleted file changes its directory's mtime: one light check per query, bounded rebuilds.
   let rebuilt = false;
+  for (let pass = 0; pass < MAX_DIRECTORY_REBUILDS; pass += 1) {
+    if (!(await directoriesChanged(root, index))) break;
+    rebuilt = true;
+    index = await getIndex(root, limits, index);
+  }
+  let selected = index.chunks.length > 0 ? selectTop(terms, index, limit) : [];
+  // Each returned range must still describe its file; the first changed file triggers one rebuild.
   for (const item of selected) {
-    if (await isStale(root, index, item.chunk.path)) {
+    if (await isStale(root, rootReal, index, item.chunk.path)) {
       rebuilt = true;
+      index = await getIndex(root, limits, index);
+      selected = index.chunks.length > 0 ? selectTop(terms, index, limit) : [];
       break;
     }
-  }
-  if (rebuilt) {
-    index = await getIndex(root, limits, true);
-    selected = selectTop(terms, index, limit);
   }
 
   const meta = {
@@ -455,22 +591,19 @@ export async function searchCodeContext(input: CodeContextInput): Promise<CodeCo
     rebuilt,
     staleDropped: 0,
   };
-  if (terms.length === 0) {
-    return { provider: CODE_CONTEXT_PROVIDER, status: 'empty-query', query: input.query, tokens: [], index: meta, hits: [] };
-  }
 
   const hits: CodeContextHit[] = [];
   let staleDropped = 0;
   let budget = MAX_RESPONSE_CHARS;
   for (const item of selected) {
     // Re-read and compare with the indexed signature: a range is returned only for the text it came from.
-    const read = await readTextFile(path.join(root, item.chunk.path), limits.maxFileBytes);
+    const read = await readTextFile(path.join(root, item.chunk.path), limits.maxFileBytes, rootReal);
     const signature = index.files.get(item.chunk.path);
     if (!read.ok || !signature || read.signature.mtimeMs !== signature.mtimeMs || read.signature.size !== signature.size) {
       staleDropped += 1;
       continue;
     }
-    const raw = read.text.split(/\r?\n/).slice(item.chunk.startLine - 1, item.chunk.endLine).join('\n');
+    const raw = maskFileText(read.text).split(/\r?\n/).slice(item.chunk.startLine - 1, item.chunk.endLine).join('\n');
     const snippet = maskSnippet(raw);
     if (snippet.text.length > budget) break;
     budget -= snippet.text.length;

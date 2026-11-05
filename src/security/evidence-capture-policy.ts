@@ -271,6 +271,17 @@ export function decideToolEvidenceCapture(
   toolName: string,
   input: unknown,
 ): EvidenceCaptureDecision {
+  // Lexical context results are masked source excerpts: only their metadata goes to the evidence log.
+  if (toolName === 'code_orient' && (input as { action?: unknown } | null | undefined)?.action === 'context') {
+    return {
+      disposition: 'metadata-only',
+      policyState: 'inactive',
+      pathCount: 0,
+      ruleCount: 0,
+      markerCount: 0,
+      reason: 'lexical-context-excerpts',
+    };
+  }
   const extracted = extractEvidenceCandidatePaths(toolName, input);
   const minimum: EvidenceCaptureDisposition = toolName === 'image_inspect' ? 'metadata-only' : 'full';
   if (!extracted.knownFileTool) {
