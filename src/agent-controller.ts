@@ -163,7 +163,7 @@ export const RESPONSE_STYLE_CONTRACT = [
 
 /**
  * The user's standing working rules, placed near the top of the Native system prompt so the user never has to repeat
- * them (user decision 2026-10-30). Mirrors the user's own "hard-rules" skill file (C:UsersIkbal.claudeskillshard-rulesSKILL.md; merged from "respect" on 2026-11-06); when that file changes, update this
+ * them (user decision 2026-10-30). Mirrors the user's own "hard-rules" skill file (~/.claude/skills/hard-rules/SKILL.md; merged from "respect" on 2026-11-06); when that file changes, update this
  * block in the same change. AGENTS.md, safety rules and the current user message outrank it.
  */
 export const WORKING_RULES_CONTRACT = [
