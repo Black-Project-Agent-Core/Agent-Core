@@ -618,7 +618,8 @@ export class AgentRuntimeService {
       providerCount: provider.providerCount ?? (provider.configured ? 1 : 0),
       configuredProviderCount: provider.configuredProviderCount ?? (provider.configured ? 1 : 0),
       sessionCount: state.sessions.length,
-      runningSessionCount: state.sessions.filter(session => session.status === 'active').length,
+      // A session stays 'active' until closed, so open conversations are not work; count sessions with a running task.
+      runningSessionCount: new Set(state.tasks.filter(task => task.status === 'running').map(task => task.sessionId)).size,
       skillCount,
       pendingFinalizationCount,
       capabilities: {

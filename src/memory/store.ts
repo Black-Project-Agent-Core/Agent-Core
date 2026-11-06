@@ -287,6 +287,30 @@ export class FileMemoryStore {
     return committed.records.find(record => record.id === id)!;
   }
 
+  /** Applies `mutation` to every listed record in ONE commit. A record whose mutation throws (or that is missing
+   * or pinned) is left as it was and reported in `failures`; the others still commit. Throws only when the
+   * commit itself fails. */
+  async mutateEach(ids: readonly string[], mutation: (current: MemoryRecord, id: string) => MemoryRecord): Promise<{ records: Map<string, MemoryRecord>; failures: Map<string, unknown> }> {
+    const wanted = [...new Set(ids)];
+    for (const id of wanted) validateMemoryId(id);
+    const committed = await this.commitPlan([],({records}) => {
+      const failures = new Map<string,unknown>(), next = new Map<string,MemoryRecord>();
+      for (const id of wanted) {
+        try {
+          const current = records.find(record => record.id === id);
+          if (!current) throw new Error(`Memory not found: ${id}`);
+          if (current.pinned) throw new Error('Pinned foundational memory cannot be rewritten through ordinary store APIs');
+          const changed = mutation(current,id);
+          if (changed.id !== id || changed.pinned) throw new Error('Memory mutation cannot change identity or pin state');
+          next.set(id,changed);
+        } catch (error) { failures.set(id,error); }
+      }
+      return {records:records.map(record => next.get(record.id) ?? record),touchedIds:[...next.keys()],stateWrites:[],result:failures};
+    },true);
+    const byId = new Map(committed.records.map(record => [record.id,record] as const));
+    return {records:new Map(wanted.filter(id => !committed.result.has(id)).map(id => [id,byId.get(id)!] as const)),failures:committed.result};
+  }
+
   async create(record: MemoryRecord): Promise<void> {
     if (record.pinned) throw new Error('Pinned memories cannot be created through ordinary store APIs');
     await this.commitPlan([],({records}) => {

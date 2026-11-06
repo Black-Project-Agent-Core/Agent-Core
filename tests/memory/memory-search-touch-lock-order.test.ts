@@ -53,7 +53,7 @@ it('records the retrieval ledger and returns before slow recency touches take th
   const { service, internal, lockPath } = await serviceFixture();
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
-  vi.spyOn(internal.store, 'mutate').mockImplementation(() =>
+  vi.spyOn(internal.store, 'mutateEach').mockImplementation(() =>
     withMemoryProcessLock(lockPath, async () => { await gate; throw new Error('released'); }));
 
   const searchPromise = service.search('automobile', { limit: 5 });

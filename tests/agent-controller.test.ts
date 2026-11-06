@@ -529,6 +529,17 @@ describe('native Agent Core controller lifecycle', () => {
       expect.objectContaining({ evidenceRefs: ['file:own-evidence'], workspace: 'workspace-a' }),
     ]);
   });
+  it('counts a session as running only while it has a running task', async () => {
+    const { runtime } = await fixture([]);
+    const idle = await runtime.startSession();
+    const busy = await runtime.startSession();
+    await runtime.beginTask({ sessionId: busy.id, workspace: 'fixture', goal: 'hold a running task' });
+    const health = await runtime.health();
+    expect(health.sessionCount).toBe(2);
+    expect(health.runningSessionCount).toBe(1);
+    expect(idle.status).toBe('active');
+  });
+
   it('cannot complete a verified recovery without Learning checkpoint and semantic review', async () => {
     const { controller, runtime, learning, memory } = await fixture([finalizeChoice('verified result')]);
     const result = await controller.runTask({ prompt: 'repair fixture', workspace: 'fixture' });

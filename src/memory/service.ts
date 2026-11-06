@@ -1019,6 +1019,35 @@ export class MemoryService {
     return updated;
   }
 
+  /** Recency touches of one search in ONE store commit (each commit is O(store) under the memory lock). Per-record
+   * failures, including the exact-revision conflict of a project-synthesis record, go to `onFailure` and leave the
+   * others committed; a failed commit reports every entry. */
+  private async touchMany(
+    entries: Array<{ record: MemoryRecord; exactRevision: boolean }>,
+    onFailure: (record: MemoryRecord, error: unknown) => void,
+  ): Promise<void> {
+    const wanted = new Map(entries.filter(entry => !entry.record.pinned).map(entry => [entry.record.id, entry] as const));
+    if (!wanted.size) return;
+    let outcome: Awaited<ReturnType<FileMemoryStore['mutateEach']>>;
+    try {
+      outcome = await this.store.mutateEach([...wanted.keys()], (current, id) => {
+        const { record, exactRevision } = wanted.get(id)!;
+        if(exactRevision&&memorySemanticRevision(current)!==memorySemanticRevision(record))throw new MemoryControllerError('MEMORY_REVISION_CONFLICT');
+        return {
+          ...current,
+          lastAccessedAt: new Date().toISOString(),
+          retrievalCount: current.retrievalCount + 1,
+          evolutionHistory: boundedHistory(current.evolutionHistory, event('retrieved', 'system', ['lastAccessedAt', 'retrievalCount'])),
+        };
+      });
+    } catch (error) {
+      for (const { record } of wanted.values()) onFailure(record, error);
+      return;
+    }
+    for (const [id, updated] of outcome.records) this.records.set(id, updated);
+    for (const [id, error] of outcome.failures) onFailure(wanted.get(id)!.record, error);
+  }
+
   async read(id: string, trackAccess = true): Promise<MemoryRecord | null> {
     this.assertOperational();
     await this.reload();
@@ -1501,7 +1530,6 @@ export class MemoryService {
       let deliveryIds=new Set((await synthesisEligibility.validateDelivery(rankedResults.map(result=>result.record))).map(record=>record.id));
       rankedResults=rankedResults.filter(result=>deliveryIds.has(result.record.id));
       lap('rankAndValidate1');
-      lap('touchLoop');
       deliveryIds=new Set((await synthesisEligibility.validateDelivery(rankedResults.map(result=>result.record))).map(record=>record.id));
       rankedResults=rankedResults.filter(result=>deliveryIds.has(result.record.id));
       lap('validateDelivery2');
@@ -1608,17 +1636,19 @@ export class MemoryService {
       // Recency bookkeeping only (lastAccessedAt/retrievalCount). Each touch is a full-store commit under the
       // memory lock, so it starts only after the ledger write above has taken that lock; started earlier, the
       // ledger write (and this response) queued behind every touch.
-      for (const result of rankedResults) {
-        if (result.record.pinned||synthesisEligibility.summary().reasons.includes('deadline')) continue;
-        void this.touch(result.record,result.record.category==='project-synthesis').catch((error) => {
-          if(result.record.category==='project-synthesis')synthesisEligibility.omit(result.record,'unknown');
-          const issue: MemoryIssue = {
-            path: this.store.paths.root,
-            message: `Recall metadata update failed for ${result.record.id}: ${error instanceof Error ? error.message : String(error)}`,
-            severity: 'degraded',
-          };
-          this.syncCanonicalIssues([...this.canonicalIssues, issue]);
-        });
+      if (!synthesisEligibility.summary().reasons.includes('deadline')) {
+        void this.touchMany(
+          rankedResults.map(result => ({ record: result.record, exactRevision: result.record.category === 'project-synthesis' })),
+          (failed, error) => {
+            if(failed.category==='project-synthesis')synthesisEligibility.omit(failed,'unknown');
+            const issue: MemoryIssue = {
+              path: this.store.paths.root,
+              message: `Recall metadata update failed for ${failed.id}: ${error instanceof Error ? error.message : String(error)}`,
+              severity: 'degraded',
+            };
+            this.syncCanonicalIssues([...this.canonicalIssues, issue]);
+          },
+        );
       }
       lap('projectionAndLedger');
       try {

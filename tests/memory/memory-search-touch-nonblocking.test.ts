@@ -46,10 +46,10 @@ async function serviceFixture() {
 
 /** Guards src/memory/service.ts search(): touch() must be fired, not awaited, so one slow
  * full-store mutate() never blocks the search response (see commit 7db5946). */
-it('returns search results without waiting for the per-result touch() write to settle', async () => {
+it('returns search results without waiting for the per-search touchMany() write to settle', async () => {
   const { service, internal } = await serviceFixture();
   const gate = new Promise<MemoryRecord>(() => { /* never resolves for the life of this test */ });
-  vi.spyOn(internal, 'touch').mockReturnValue(gate);
+  vi.spyOn(internal, 'touchMany').mockReturnValue(gate);
 
   const searchPromise = service.search('automobile', { limit: 5 });
   const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), 1000));
@@ -58,5 +58,5 @@ it('returns search results without waiting for the per-result touch() write to s
   expect(winner).not.toBe('timeout');
   const results = winner as Awaited<ReturnType<typeof service.search>>;
   expect(results.length).toBeGreaterThan(0);
-  expect(internal.touch).toHaveBeenCalled();
+  expect(internal.touchMany).toHaveBeenCalled();
 });
