@@ -380,6 +380,11 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
   ],
   "directoryIntents": [
     {
+      "path": ".github/workflows",
+      "purpose": "github-actions-workflows",
+      "owner": ".github"
+    },
+    {
       "path": ".remember/logs",
       "purpose": "remember-plugin-logs",
       "owner": ".remember"
