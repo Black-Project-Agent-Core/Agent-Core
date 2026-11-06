@@ -1,0 +1,95 @@
+# Runs tests off the owner's PC. The repository is public, so logs are public: no secrets and no real provider keys here.
+# A green run is not acceptance; final acceptance stays on the owner's PC (see CLAUDE.md).
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore: ['docs/**', '**/*.md']
+  pull_request:
+    branches: [main]
+    paths-ignore: ['docs/**', '**/*.md']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24.x'
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run path:check
+      - run: npx tsc --noEmit
+
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx vitest run --shard=${{ matrix.shard }}/4
+
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/ui/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: src/ui
+      - run: npx tsc --noEmit -p tsconfig.json
+        working-directory: src/ui
+      - run: npx vitest run
+        working-directory: src/ui
+
+  windows-tests:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      # shortcut: selects Windows-bound tests by keyword; replace with a tag once the baseline shows which ones matter.
+      - name: Run Windows-bound tests
+        shell: bash
+        run: |
+          files=$(grep -lE "win32|powershell|\.cmd|schtasks|DPAPI|wmic|Get-Process" tests/*.ts | tr '\n' ' ')
+          npx vitest run $files
+
+  launcher:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet test src/launcher.tests/AgentCore.Launcher.Tests.csproj -c Release
