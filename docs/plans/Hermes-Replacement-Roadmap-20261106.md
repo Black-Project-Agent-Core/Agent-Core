@@ -69,7 +69,7 @@ Memory dan Learning berversi, skill berversi dengan proposal, code intelligence 
 1. Satu atau dua tugas per pesan ke pekerja, pendek.
 2. Pekerja tidak commit, tidak promosi, tidak restart. Supervisor meninjau diff, menjalankan tes tersempit, lalu commit dengan pathspec eksplisit.
 3. Dua pekerja tidak menyentuh file yang sama. Keduanya berbagi satu checkout, dan working tree berisi penghapusan `SubProject` milik user yang tidak boleh disentuh.
-4. Kode non-trivial melewati `ecc:code-reviewer` dan `ecc:typescript-reviewer`; jalur auth, input, atau jaringan juga `ecc:security-reviewer`.
+4. Instruksi user 2026-11-06: sesi pekerja dilarang memakai subagen dan mengerjakan semuanya langsung sendiri. Review `ecc:code-reviewer` dan `ecc:typescript-reviewer` (jalur auth, input, atau jaringan juga `ecc:security-reviewer`) dijalankan oleh supervisor.
 5. Native tidak dipakai kecuali user memintanya secara eksplisit.
 6. Build di Source, promosi dengan `scripts/windows/Promote-Source-To-Platform.ps1` (dry-run lalu `-Apply`), restart sekali saat tidak ada turn Native atau tool bermutasi berjalan.
 
