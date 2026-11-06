@@ -124,4 +124,9 @@ export interface MemoryHealth {
   embeddingProvider?: string;
   embeddingModel?: string;
   embeddingDimensions?: number;
+  /** Set by the /health probe when it answered from the last known in-process state instead of a fresh read. */
+  stale?: true;
+  staleReason?: 'memory-lock-busy' | 'refresh-pending';
+  /** When the figures of a stale answer were last refreshed from the store; absent if never. */
+  refreshedAt?: string;
 }

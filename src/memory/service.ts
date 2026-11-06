@@ -29,6 +29,7 @@ import { RETENTION_PARAMS, scoreMemoryRetention } from './retention-score.js';
 import { IDENTIFIER_TOKENIZER_VERSION, lexicalRetrievalTokens } from './identifier-tokenizer.js';
 import { FUSION_DIVERSITY_POLICY, searchMemories, type MemorySearchOptions, type MemorySearchResult } from './retrieval.js';
 import { projectMemorySearchResults, type DeliveredMemorySearchResult } from './search-projection.js';
+import { memoryLockQueued } from './lock.js';
 import { FileMemoryStore } from './store.js';
 import {MemoryClaimReviews} from './claim-review.js';
 import {MemoryRecallRepairs} from './recall-repair.js';
@@ -856,6 +857,36 @@ export class MemoryService {
       }
     }
     return this.health();
+  }
+
+  private healthRefresh: Promise<MemoryHealth> | undefined;
+  private healthRefreshedAt: string | undefined;
+
+  /** Health for the /health probe. refreshHealth() takes a full snapshot under the memory lock, so behind writers it
+   * timed out and its queue entry made the queue longer. Here a refresh is started only when this process has no
+   * lock holder or waiter, runs single-flight, and the probe waits at most `waitMs` for it; otherwise it answers
+   * from the in-process state (the same state the writers keep current) marked `stale`, never as a healthy read. */
+  async probeHealth(waitMs = 1_500): Promise<MemoryHealth> {
+    const lockBusy = memoryLockQueued(this.store.paths.lock);
+    if (!this.healthRefresh && !lockBusy) {
+      const refresh = this.refreshHealth().then(health => { this.healthRefreshedAt = new Date().toISOString(); return health; });
+      this.healthRefresh = refresh;
+      void refresh.then(() => undefined, () => undefined).finally(() => { if (this.healthRefresh === refresh) this.healthRefresh = undefined; });
+    }
+    const pending = this.healthRefresh;
+    if (pending) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const winner = await Promise.race([pending, new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), waitMs); })]);
+        if (winner) return winner;
+      } finally { clearTimeout(timer); }
+    }
+    return {
+      ...this.health(),
+      stale: true,
+      staleReason: lockBusy ? 'memory-lock-busy' : 'refresh-pending',
+      ...(this.healthRefreshedAt ? { refreshedAt: this.healthRefreshedAt } : {}),
+    };
   }
 
   private assertOperational(): void {

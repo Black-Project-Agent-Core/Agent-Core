@@ -122,6 +122,11 @@ async function acquireLocalLock(lockPath: string): Promise<() => void> {
   };
 }
 
+/** True while this process holds the lock or has callers queued for it. Cross-process holders are not visible here. */
+export function memoryLockQueued(lockPath: string): boolean {
+  return localLockTails.has(normalizeLocalLockKey(lockPath));
+}
+
 function busy(): Error {
   return Object.assign(new Error('Memory store is busy in another process'), {
     code: 'MEMORY_STORE_BUSY',

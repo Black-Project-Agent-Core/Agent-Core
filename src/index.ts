@@ -263,7 +263,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
   // Polling is diagnostic only; keep each owner independent and coalesce slow probes.
   // Captured here, once, so `startedAt` is this process's own start and the dist comparison has a fixed baseline.
   const processIdentity = createProcessIdentityReader(config.projectRoot);
-  const memoryProbe = boundedHealthProbe(() => memoryService.refreshHealth(), { cacheMs: 0 });
+  const memoryProbe = boundedHealthProbe(() => memoryService.probeHealth(), { cacheMs: 0 });
   const executionProbe = boundedHealthProbe(() => configManager.health(), { cacheMs: 0 });
   const phoneProbe = phoneController && boundedHealthProbe(() => phoneController.health());
   const codeProbe = codeIntelligence && boundedHealthProbe(() => codeIntelligence.health());
