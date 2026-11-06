@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { ArrowRight, Boxes, BrainCircuit, Code2, Database, FileText, Folder, RefreshCw, Search, Sparkles, Target } from 'lucide-react';
 import { MetricCard, PageHero, Panel, StatusBadge, TinyButton, Toggle, type PageId } from './components';
 import { TaskChangesPanel } from './TaskChangesPanel';
-import { Plus, Moon, ListTodo, Lock, Network } from 'lucide-react';
+import { Plus, Moon, ListTodo, Lock, Network, PlugZap } from 'lucide-react';
 import { PrototypeHeader, PrototypeCard, UpgradeControl } from './PrototypePages';
-import type { AgentChatUiState, DesktopSnapshot } from './host';
+import type { AgentChatProvider, AgentChatUiState, DesktopSnapshot } from './host';
+import { useProviderTests, type ProviderTestState } from './useProviderTests';
 
 type Props = {
   dreaming?: import('./host').DreamingUiState;
@@ -44,9 +45,75 @@ export function ModelsPage(props: Props) {
   </div>;
 }
 
+const tokenCount = (value: number | null) => value === null ? 'Not reported'
+  : value >= 1_000_000 ? `${+(value / 1_000_000).toFixed(2)}M` : value >= 1_000 ? `${+(value / 1_000).toFixed(1)}K` : String(value);
+
+/** One configured provider: its key test and the models the keys can see. Picking a model goes through the AI Models choice. */
+function RouterProvider({ provider, test, onTest, props, busy }: {
+  provider: AgentChatProvider; test?: ProviderTestState; onTest: (id: string) => void; props: Props; busy: boolean;
+}) {
+  const report = test?.report;
+  const testing = test?.state === 'testing';
+  const selectable = (model: string) => provider.id === 'anthropic'
+    ? Boolean(props.onChatModel) && (provider.models?.some(item => item.id === model) ?? false)
+    : model === provider.model;
+  const selected = (model: string) => props.agentChat.providerChoice === provider.id
+    && (props.agentChat.modelChoice ? props.agentChat.modelChoice === model : provider.model === model);
+  const use = (model: string) => {
+    props.onChatProvider?.(provider.id);
+    if (provider.id === 'anthropic') props.onChatModel?.(model);
+    props.setPage('chat');
+  };
+  const answered = report?.keys.filter(key => key.ok).length ?? 0;
+  const headingId = `router-provider-${provider.id}`;
+  return <section className="router-provider" aria-labelledby={headingId} aria-busy={testing}>
+    <div className="router-provider-head">
+      <div><h3 id={headingId}>{provider.id}</h3><small>Current model: {provider.model ?? 'Not set'}</small></div>
+      <StatusBadge tone={!provider.configured ? 'offline' : provider.available ? 'healthy' : 'warning'}
+        label={!provider.configured ? 'Not configured' : provider.available ? 'Available' : 'Waiting'}/>
+      <button type="button" className="tiny-button primary" disabled={!provider.configured || testing}
+        aria-label={`Test ${provider.id} keys`} onClick={() => onTest(provider.id)}>
+        <PlugZap size={13}/>{testing ? 'Testing…' : report ? 'Test again' : 'Test'}</button>
+    </div>
+    {!provider.configured && <p className="router-rule">{provider.issue ?? 'This provider needs a base URL, a model and a key before it can be tested.'}</p>}
+    {testing && <p role="status">Asking the provider which models each key can use…</p>}
+    {test?.state === 'error' && <p role="alert" className="router-failure">{test.error}</p>}
+    {report && <>
+      <p role={report.status === 'failed' ? 'alert' : 'status'} className={report.status === 'failed' ? 'router-failure' : undefined}>
+        {report.keys.length ? `${answered} of ${report.keys.length} ${report.keys.length === 1 ? 'key' : 'keys'} answered` : report.failure?.message ?? 'No key answered.'}
+        {' · '}{report.models.length} {report.models.length === 1 ? 'model' : 'models'}
+        {' · '}checked <time dateTime={report.checkedAt}>{new Date(report.checkedAt).toLocaleTimeString()}</time></p>
+      {report.keys.some(key => !key.ok || key.truncated) && <ul className="router-key-list" aria-label={`${provider.id} key results`}>
+        {report.keys.map(key => <li key={key.credentialId}><b>{key.credentialId}</b>{key.ok
+          ? <span>{key.modelCount} models{key.truncated ? ' (list cut at the size limit)' : ''}</span>
+          : <span className="router-failure">{key.failure?.message ?? 'Failed.'}{key.failure?.httpStatus ? ` (HTTP ${key.failure.httpStatus})` : ''}
+            {key.failure?.retryAt ? ` Retry after ${new Date(key.failure.retryAt).toLocaleString()}.` : ''}</span>}</li>)}
+      </ul>}
+      {report.models.length > 0 && <div className="router-table-wrap"><table className="simple-table">
+        <caption className="sr-only">Models available to {provider.id} keys</caption>
+        <thead><tr><th scope="col">Model</th><th scope="col" className="router-number">Context</th><th scope="col" className="router-number">Max output</th>
+          <th scope="col" className="router-number">Keys</th><th scope="col">Choose</th></tr></thead>
+        <tbody>{report.models.map(model => <tr key={model.id}>
+          <td><span className="router-model">{model.id}</span>{model.displayName && <small> {model.displayName}</small>}</td>
+          <td className="router-number">{tokenCount(model.contextWindowTokens)}</td>
+          <td className="router-number">{tokenCount(model.maxOutputTokens)}</td>
+          <td className="router-number">{model.keyCount}/{report.keys.length}</td>
+          <td>{selected(model.id) ? <StatusBadge tone="healthy" label="Selected"/>
+            : selectable(model.id) ? <button type="button" className="tiny-button" disabled={busy || !provider.configured || !props.onChatProvider}
+              aria-label={`Use ${model.id} from ${provider.id}`} onClick={() => use(model.id)}>Use <ArrowRight size={12}/></button>
+            : <small title="Only models listed in AI Models can be chosen.">Not in AI Models</small>}</td>
+        </tr>)}</tbody>
+      </table></div>}
+    </>}
+  </section>;
+}
+
 export function RouterPage(props: Props) {
   const providers = props.agentChat.providers;
   const models = props.agentChat.verifiedModels;
+  const { tests, run } = useProviderTests();
+  const busy = Boolean(props.agentChat.runningRequestId)
+    || Boolean(props.agentChat.active?.turns.some(turn => turn.status === 'running' || turn.status === 'resumable'));
   const routeStatus = (providerId: string, model: string) => {
     const route = providers?.find(item => item.id === providerId);
     if (!route) return { tone: 'unknown' as const, label: 'Not listed' };
@@ -55,13 +122,18 @@ export function RouterPage(props: Props) {
     return route.available ? { tone: 'healthy' as const, label: 'Available' } : { tone: 'warning' as const, label: 'Waiting' };
   };
   return <div className="prototype-page launcher-data-page">
-    <PrototypeHeader title="Router" badge="Not active" description="Agent Core will be the one router for model calls. Routing is not built yet, so this page only lists the models registered for it."><UpgradeControl reason="The routing engine is not built yet."><Network size={14}/>Enable Router</UpgradeControl></PrototypeHeader>
+    <PrototypeHeader title="Router" badge="Provider pool" description="Every model call goes through the provider pool configured in Agent Core. Test a provider to see which models its keys can use, then choose one for AI Workspace.">
+      <TinyButton onClick={() => props.setPage('models')}><Network size={14}/>Open AI Models</TinyButton></PrototypeHeader>
     <Panel>
-      <div className="router-state"><StatusBadge tone="offline" label="Router off"/><p>Model calls still follow the selection in AI Workspace and AI Models. Nothing passes through this page.</p></div>
+      <div className="router-models-heading"><h2>Providers</h2>{providers && <span>{providers.length} configured</span>}</div>
+      <p className="router-rule">A test lists the models each key can see. It never shows a key: keys appear by their slot name only. Choosing a model here is the same choice as in AI Models.</p>
+      {!providers && <p role="status">Waiting for provider information from the desktop host.</p>}
+      {providers?.length === 0 && <p>No providers are configured.</p>}
+      {providers?.map(provider => <RouterProvider key={provider.id} provider={provider} test={tests[provider.id]} onTest={run} props={props} busy={busy}/>)}
     </Panel>
     <Panel>
-      <div className="router-models-heading"><h2>Registered models</h2>{models && <span>{models.length} {models.length === 1 ? 'model' : 'models'}</span>}</div>
-      <p className="router-rule">A model is registered after it finishes at least one turn in Agent Core without an error.</p>
+      <div className="router-models-heading"><h2>Models with a finished turn</h2>{models && <span>{models.length} {models.length === 1 ? 'model' : 'models'}</span>}</div>
+      <p className="router-rule">A model is listed here after it finishes at least one turn in Agent Core without an error.</p>
       {!models && <p role="status">Waiting for model information from the desktop host.</p>}
       {models?.length === 0 && <p>No model has finished a turn yet. Run one in AI Workspace and it appears here.</p>}
       {Boolean(models?.length) && <div className="router-table-wrap"><table className="simple-table">

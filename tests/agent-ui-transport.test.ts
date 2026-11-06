@@ -76,6 +76,12 @@ async function setup(dreaming?: HttpHandlerOptions['dreaming']) {
     listProviders: vi.fn(() => [{ id: 'atria', model: 'Atria-Dawn', configured: true, available: true }]),
     listVerifiedModels: vi.fn(() => [{ providerId: 'atria', model: 'Atria-Dawn', successfulTurns: 3, lastSuccessAtMs: 9 }]),
     refreshProviderCapabilities: vi.fn(async () => undefined),
+    testProvider: vi.fn(async (providerId: unknown) => {
+      if (providerId === 'boom') throw new Error('disk full');
+      if (providerId !== 'atria') throw new Error('AGENT_CHAT_PROVIDER_UNKNOWN');
+      return { providerId: 'atria', checkedAt: '2026-11-06T10:00:00.000Z', status: 'ok',
+        keys: [{ credentialId: 'atria:01', ok: true, modelCount: 1 }], models: [{ id: 'Atria-Dawn', contextWindowTokens: null, maxOutputTokens: null, keyCount: 1 }] };
+    }),
     readStepDetail: vi.fn((turnId: string, seq: number) => turnId === 'turn-1' && seq === 2
       ? { inputText: '{"path":"a.ts"}', outputText: 'ok', inputTruncated: false, outputTruncated: false } : null),
     getLastSelection: vi.fn((): unknown => undefined),
@@ -321,6 +327,27 @@ describe('launcher-only native agent HTTP transport', () => {
     expect(agentChat.runTurn.mock.calls.at(-1)![0]).not.toHaveProperty('providerRoute');
     expect((await turn('bad route!')).status).toBe(400);
     expect((await turn(42)).status).toBe(400);
+  });
+
+  it('tests one provider route for the owner UI only', async () => {
+    const { baseUrl, agentChat } = await setup();
+    const headers = { 'x-agent-core-ui-token': 'fixture-ui-token' };
+    const test = (id: string, init: RequestInit = {}) => fetch(`${baseUrl}/agent/chat/providers/${id}/test`, { method: 'POST', ...init });
+    expect((await test('atria')).status).toBe(401);
+    expect((await test('atria', { headers: { ...headers, 'x-agent-core-chat-origin': 'external-controller' } })).status).toBe(403);
+    expect((await test('atria', { method: 'GET', headers })).status).toBe(405);
+    expect(agentChat.testProvider).not.toHaveBeenCalled();
+    const ok = await test('atria', { headers });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ test: expect.objectContaining({ providerId: 'atria', status: 'ok', models: [expect.objectContaining({ id: 'Atria-Dawn' })] }) });
+    expect(agentChat.testProvider).toHaveBeenLastCalledWith('atria');
+    const unknown = await test('gonka', { headers });
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toEqual({ error: 'agent_chat_provider_unknown' });
+    expect((await test('%E0%A4%A', { headers })).status).toBe(404);
+    const failed = await test('boom', { headers });
+    expect(failed.status).toBe(500);
+    expect(await failed.text()).not.toContain('disk full');
   });
 
   it('reports the last owner selection with the providers and records a new one for the owner only', async () => {

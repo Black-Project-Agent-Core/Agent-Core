@@ -710,6 +710,10 @@ export class AgentRuntimeService {
     return this.provider.refreshModelCapabilities();
   }
 
+  testProviderModels(routeId: string, signal?: AbortSignal) {
+    return this.provider.testProviderModels(routeId, signal);
+  }
+
   async complete(
     messages: AgentModelMessage[],
     tools: AgentModelTool[] = [],

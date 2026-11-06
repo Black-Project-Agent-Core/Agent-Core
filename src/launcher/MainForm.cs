@@ -477,6 +477,30 @@ public sealed class MainForm : Form
                 }
                 return;
             }
+            if (type == "agent-provider-test")
+            {
+                var testRequestId = root.TryGetProperty("requestId", out var testRequestIdNode)
+                    && testRequestIdNode.ValueKind == JsonValueKind.String ? testRequestIdNode.GetString() : null;
+                if (string.IsNullOrWhiteSpace(testRequestId) || testRequestId.Length > 128) return;
+                var testProviderId = root.TryGetProperty("providerId", out var testProviderNode)
+                    && testProviderNode.ValueKind == JsonValueKind.String ? testProviderNode.GetString() : null;
+                if (string.IsNullOrWhiteSpace(testProviderId) || testProviderId.Length > 64)
+                {
+                    Send(new { type = "agent-provider-test-error", requestId = testRequestId, providerId = testProviderId ?? string.Empty, error = "agent_chat_provider_unknown" });
+                    return;
+                }
+                try
+                {
+                    var result = await _runtime.TestAgentProviderAsync(testProviderId);
+                    Send(new { type = "agent-provider-test-result", requestId = testRequestId, providerId = testProviderId, result });
+                }
+                catch (Exception error)
+                {
+                    Send(new { type = "agent-provider-test-error", requestId = testRequestId, providerId = testProviderId,
+                        error = error is OperationCanceledException ? "agent_chat_provider_test_timeout" : error.Message });
+                }
+                return;
+            }
             if (type == "agent-chat-slash-commands")
             {
                 try
