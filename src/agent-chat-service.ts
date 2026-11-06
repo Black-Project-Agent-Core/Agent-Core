@@ -3,6 +3,7 @@ import path from 'node:path';
 import { extractProfileDraft, isInterviewStart, parseOperatorIntroduction, type ProfileDraft, type ProfileFileName } from './agent-profile.js';
 import { AgentProviderPoolPausedError, validateAgentReasoningEffort, validateAgentProviderModel, type AgentModelMessage } from './agent-provider.js';
 import type { AgentReasoningEffort } from './agent-provider-state.js';
+import type { ProviderModelTestReport } from './agent-provider-readiness.js';
 import { normalizeNativeResultMetadata } from './agent-memory-evaluation.js';
 import {
   parseAgentTurnCheckpoint,
@@ -183,6 +184,7 @@ export class AgentChatService {
   private settleWaitMs = SETTLE_WAIT_MS;
   private settleTerminalWaitMs = SETTLE_TERMINAL_WAIT_MS;
   private readonly providerWaitTimers = new Map<string, NodeJS.Timeout>();
+  private readonly providerTests = new Map<string, Promise<ProviderModelTestReport>>();
   private automaticRecoveryPaused = false;
 
   private constructor(
@@ -536,6 +538,21 @@ export class AgentChatService {
         new Promise<void>(resolve => { timer = setTimeout(resolve, boundMs); }),
       ]);
     } finally { clearTimeout(timer); }
+  }
+
+  /**
+   * Owner key test from the Router page: lists the models each key of one listed route can see. One test per route
+   * runs at a time; a second request joins it. Throws AGENT_CHAT_PROVIDER_UNKNOWN for a route the picker does not list.
+   */
+  async testProvider(providerId: unknown): Promise<ProviderModelTestReport> {
+    if (typeof providerId !== 'string' || !this.listProviders().some(route => route.id === providerId)) throw new Error('AGENT_CHAT_PROVIDER_UNKNOWN');
+    const running = this.providerTests.get(providerId);
+    if (running) return running;
+    const work = Promise.resolve((this.runtime as any).testProviderModels?.(providerId) as Promise<ProviderModelTestReport> | null | undefined)
+      .then(report => { if (!report) throw new Error('AGENT_CHAT_PROVIDER_UNKNOWN'); return report; })
+      .finally(() => this.providerTests.delete(providerId));
+    this.providerTests.set(providerId, work);
+    return work;
   }
 
   validateProviderModel(value: unknown, providerRoute?: string): void {

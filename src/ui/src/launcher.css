@@ -548,3 +548,13 @@
 .router-table-wrap td{white-space:nowrap}
 .router-model{font-weight:600}
 .router-number{text-align:right;font-variant-numeric:tabular-nums}
+.router-provider{border-top:1px solid var(--border);padding:14px 0 6px}
+.router-provider:first-of-type{border-top:0}
+.router-provider-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.router-provider-head>div{flex:1 1 200px;min-width:0}
+.router-provider-head h3{margin:0;font-size:14px}
+.router-provider-head small{color:var(--muted)}
+.router-provider small{color:var(--muted)}
+.router-failure{color:var(--red)}
+.router-key-list{list-style:none;margin:6px 0 10px;padding:0;display:grid;gap:4px}
+.router-key-list li{display:flex;gap:10px;flex-wrap:wrap}

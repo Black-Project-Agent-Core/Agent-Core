@@ -336,6 +336,18 @@ export type AgentChatProvider = {
   models?: Array<{ id: string; reasoningEfforts?: ReasoningEffort[] }>;
 };
 
+/** Router page key test (POST /agent/chat/providers/{id}/test). Key aliases and model metadata only; never a key value or URL. */
+export type ProviderTestFailure = { code: string; message: string; httpStatus?: number; retryAt?: string };
+export type ProviderTestModel = { id: string; displayName?: string; contextWindowTokens: number | null; maxOutputTokens: number | null; reasoningEfforts?: ReasoningEffort[]; keyCount: number };
+export type ProviderTestReport = {
+  providerId: string;
+  checkedAt: string;
+  status: 'ok' | 'partial' | 'failed';
+  failure?: ProviderTestFailure;
+  keys: Array<{ credentialId: string; ok: boolean; modelCount: number; truncated?: boolean; failure?: ProviderTestFailure }>;
+  models: ProviderTestModel[];
+};
+
 /** A model that finished at least one turn in Agent Core without an error. */
 export type VerifiedModel = { providerId: string; model: string; successfulTurns: number; lastSuccessAtMs: number };
 
@@ -546,6 +558,8 @@ type HostEnvelope =
   | { type: 'agent-dreaming-error'; error: string }
   | { type: 'window-size-state'; requestId: string; size: LauncherWindowSize; warning?: string | null }
   | { type: 'window-size-error'; requestId: string; error: string; size: LauncherWindowSize }
+  | { type: 'agent-provider-test-result'; requestId: string; providerId: string; result: { test?: ProviderTestReport } }
+  | { type: 'agent-provider-test-error'; requestId: string; providerId: string; error: string }
   | { type: 'task-changes-result'; requestId: string; result: TaskChanges }
   | { type: 'task-changes-error'; requestId: string; error: string }
   | { type: 'proposals-result'; requestId: string; result: ProposalDocumentList }

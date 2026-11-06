@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { assertCredentialBearingUrl } from './net/endpoint-policy.js';
 import { fetchWithPolicy } from './net/outbound-request.js';
 import { readResponseJsonBounded } from './net/bounded-response.js';
-import { AgentProviderRequestError, observeProviderResponse } from './agent-provider-errors.js';
+import { AgentProviderRequestError, classifyAgentProviderFailure, observeProviderResponse } from './agent-provider-errors.js';
 import { secretRevisionDigest, type AgentReasoningEffort, type ProviderModelReadiness, type ProviderStateStore } from './agent-provider-state.js';
 import type { AgentProviderContinuationMetadata, AgentModelMessage, AgentModelTool, AgentModelResponse } from './agent-provider.js';
 
@@ -73,6 +73,118 @@ function supportedEfforts(raw: any): AgentReasoningEffort[] {
   return REASONING_EFFORT_LEVELS.filter(level => raw?.capabilities?.effort?.supported === true && raw.capabilities.effort[level]?.supported === true);
 }
 
+/** Why an owner key test failed. Codes and their texts are fixed here; nothing from the provider's body is echoed. */
+export type ProviderModelListFailureCode =
+  | 'NO_KEY' | 'ENDPOINT_MISSING' | 'ENDPOINT_INSECURE' | 'AUTH_REJECTED' | 'PERMISSION_DENIED' | 'RATE_LIMITED'
+  | 'QUOTA_EXHAUSTED' | 'ENDPOINT_NOT_FOUND' | 'REQUEST_REJECTED' | 'PROVIDER_UNAVAILABLE' | 'TIMEOUT'
+  | 'NETWORK_UNREACHABLE' | 'INVALID_RESPONSE';
+export interface ProviderModelListFailure {
+  code: ProviderModelListFailureCode;
+  /** Owner-facing cause and next step. Never contains a key, a URL or provider error text. */
+  message: string;
+  httpStatus?: number;
+  retryAt?: string;
+}
+export interface ProviderListedModel {
+  id: string;
+  displayName?: string;
+  contextWindowTokens: number | null;
+  maxOutputTokens: number | null;
+  /** Anthropic only: the effort levels the catalog entry advertises for this key. */
+  reasoningEfforts?: AgentReasoningEffort[];
+}
+interface ProviderKeyModelList {
+  /** Configured alias such as `anthropic:01`; never the secret. */
+  credentialId: string;
+  ok: boolean;
+  models: ProviderListedModel[];
+  truncated?: boolean;
+  failure?: ProviderModelListFailure;
+}
+export interface ProviderModelTestReport {
+  providerId: string;
+  checkedAt: string;
+  status: 'ok' | 'partial' | 'failed';
+  failure?: ProviderModelListFailure;
+  keys: Array<Omit<ProviderKeyModelList, 'models'> & { modelCount: number }>;
+  /** Union over the keys that answered; keyCount says how many of them list the model. */
+  models: Array<ProviderListedModel & { keyCount: number }>;
+}
+
+const MAX_LISTED_MODELS = 2_000;
+const MAX_MODEL_PAGES = 5;
+const MODEL_LIST_FAILURE_TEXT: Record<ProviderModelListFailureCode, string> = {
+  NO_KEY: 'No API key is configured for this provider.',
+  ENDPOINT_MISSING: 'No base URL is configured for this provider.',
+  ENDPOINT_INSECURE: 'The configured base URL is not HTTPS (only loopback may use HTTP), so the key was not sent.',
+  AUTH_REJECTED: 'The provider rejected the API key (invalid, revoked or expired). Replace the key.',
+  PERMISSION_DENIED: 'The key is valid but not allowed to list models (permission or workspace restriction).',
+  RATE_LIMITED: 'The provider is rate limiting this key. Try again later.',
+  QUOTA_EXHAUSTED: 'The key has no quota or credit left. Check the provider account balance.',
+  ENDPOINT_NOT_FOUND: 'The provider has no model list at the configured base URL. Check the base URL.',
+  REQUEST_REJECTED: 'The provider rejected the request.',
+  PROVIDER_UNAVAILABLE: 'The provider is down or overloaded. Try again later.',
+  TIMEOUT: 'The provider did not answer in time.',
+  NETWORK_UNREACHABLE: 'The provider could not be reached (DNS, connection or proxy failure).',
+  INVALID_RESPONSE: 'The provider answered with something that is not a model list.',
+};
+function describeModelListFailure(code: ProviderModelListFailureCode): ProviderModelListFailure {
+  return { code, message: MODEL_LIST_FAILURE_TEXT[code] };
+}
+class ModelListShapeError extends Error {
+  constructor(cause: unknown) { super('MODEL_LIST_INVALID_RESPONSE', { cause }); }
+}
+const UNREACHABLE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH',
+  'ENETDOWN', 'EPIPE', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'SELF_SIGNED_CERT_IN_CHAIN', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'ERR_TLS_CERT_ALTNAME_INVALID']);
+function errorChainHas(error: unknown, test: (value: { name?: unknown; code?: unknown }) => boolean): boolean {
+  let current = error;
+  for (let depth = 0; depth < 8 && typeof current === 'object' && current !== null; depth += 1) {
+    if (test(current as { name?: unknown; code?: unknown })) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+function classifyModelListError(error: unknown): [ProviderModelListFailureCode, { httpStatus?: number; retryAt?: string }] {
+  if (error instanceof ModelListShapeError) return ['INVALID_RESPONSE', {}];
+  if (error instanceof AgentProviderRequestError) {
+    const status = { httpStatus: error.status };
+    if (error.status === 404) return ['ENDPOINT_NOT_FOUND', status];
+    const decision = classifyAgentProviderFailure(error);
+    const retry = decision.retryAtMs ? { ...status, retryAt: new Date(decision.retryAtMs).toISOString() } : status;
+    switch (decision.failureClass) {
+      case 'AUTH_INVALID': return ['AUTH_REJECTED', status];
+      case 'MODEL_ACCESS': return ['PERMISSION_DENIED', status];
+      case 'RATE_LIMIT': return ['RATE_LIMITED', retry];
+      case 'QUOTA_EXHAUSTED': case 'CREDIT_EXHAUSTED': return ['QUOTA_EXHAUSTED', retry];
+      case 'PROVIDER_TRANSIENT': return ['PROVIDER_UNAVAILABLE', status];
+      default: return ['REQUEST_REJECTED', status];
+    }
+  }
+  if (errorChainHas(error, value => value.name === 'TimeoutError' || value.code === 'UND_ERR_HEADERS_TIMEOUT'
+    || value.code === 'UND_ERR_BODY_TIMEOUT' || value.code === 'ETIMEDOUT')) return ['TIMEOUT', {}];
+  if (errorChainHas(error, value => typeof value.code === 'string' && UNREACHABLE_CODES.has(value.code))
+    || (error instanceof TypeError && /fetch failed/i.test(error.message))) return ['NETWORK_UNREACHABLE', {}];
+  // A body over the size bound or cut off mid-read.
+  return ['INVALID_RESPONSE', {}];
+}
+function listedModel(raw: any, anthropic: boolean): ProviderListedModel | null {
+  if (!raw || typeof raw.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,239}$/.test(raw.id)) return null;
+  if (anthropic && (raw.lifecycle === 'retired' || (raw.type !== undefined && raw.type !== 'model'))) return null;
+  const name = typeof raw.display_name === 'string' ? raw.display_name : typeof raw.name === 'string' ? raw.name : null;
+  const efforts = anthropic ? supportedEfforts(raw) : [];
+  return {
+    id: raw.id,
+    ...(name && name.trim() && name.length <= 200 && name !== raw.id ? { displayName: name.trim() } : {}),
+    contextWindowTokens: positive(raw.max_input_tokens) ?? positive(raw.top_provider?.context_length) ?? positive(raw.context_length)
+      ?? positive(raw.max_model_len) ?? positive(raw.max_context_length)
+      ?? positive(textModality(raw.input_modalities)?.supported_inputs?.max_context_length?.value),
+    maxOutputTokens: (anthropic ? positive(raw.max_tokens) : null) ?? positive(raw.top_provider?.max_completion_tokens)
+      ?? positive(raw.max_completion_tokens) ?? positive(raw.max_output_tokens),
+    ...(anthropic ? { reasoningEfforts: efforts } : {}),
+  };
+}
+
 /** Catalog metadata describes capacity; only an actual tool response proves key/model access. */
 export class ProviderModelReadinessService {
   private readonly pending = new Map<string, Promise<ProviderModelReadiness>>();
@@ -129,6 +241,91 @@ export class ProviderModelReadinessService {
     if (!response.ok) {
       const observation = observeProviderResponse(response, payload);
       throw new AgentProviderRequestError({ status: response.status, message: 'MODEL_CATALOG_UNAVAILABLE',
+        safeCode: observation.errorCode, safeType: observation.errorType,
+        retryAfterMs: observation.retryAfterMs, resetAtMs: observation.resetAtMs });
+    }
+    return payload;
+  }
+
+  /**
+   * Owner-requested key test: lists every model the key can see (`GET {baseUrl}/models`, all pages for Anthropic).
+   * Each key is tested on its own, so one rejected key does not hide the models of the others. The report carries
+   * key aliases, model metadata and a classified cause; never a key value, a URL or the provider's own error text.
+   */
+  async testRoute(route: ReadinessRoute, credentials: ReadinessCredential[], signal?: AbortSignal): Promise<ProviderModelTestReport> {
+    const keys = await Promise.all(credentials.map(credential => this.listModelsForKey(route, credential, signal)));
+    const byId = new Map<string, ProviderListedModel & { keyCount: number }>();
+    for (const key of keys) for (const model of key.models) {
+      const known = byId.get(model.id);
+      byId.set(model.id, known ? { ...known, keyCount: known.keyCount + 1 } : { ...model, keyCount: 1 });
+    }
+    return {
+      providerId: route.id, checkedAt: new Date().toISOString(),
+      status: keys.length === 0 ? 'failed' : keys.every(key => key.ok) ? 'ok' : keys.some(key => key.ok) ? 'partial' : 'failed',
+      ...(keys.length === 0 ? { failure: describeModelListFailure('NO_KEY') } : {}),
+      keys: keys.map(({ models, ...key }) => ({ ...key, modelCount: models.length })),
+      models: [...byId.values()],
+    };
+  }
+
+  private async listModelsForKey(route: ReadinessRoute, credential: ReadinessCredential, signal?: AbortSignal): Promise<ProviderKeyModelList> {
+    const failed = (code: ProviderModelListFailureCode, extra: { httpStatus?: number; retryAt?: string } = {}): ProviderKeyModelList =>
+      ({ credentialId: credential.id, ok: false, models: [], failure: { ...describeModelListFailure(code), ...extra } });
+    if (!credential.secret) return failed('NO_KEY');
+    if (!route.baseUrl) return failed('ENDPOINT_MISSING');
+    let base: URL;
+    try { base = assertCredentialBearingUrl(route.baseUrl, 'AGENT_CORE_AI_BASE_URL'); } catch { return failed('ENDPOINT_INSECURE'); }
+    base.pathname = `${base.pathname.replace(/\/$/, '')}/models`;
+    base.search = ''; base.hash = '';
+    const anthropic = route.id === 'anthropic';
+    const models: ProviderListedModel[] = [];
+    let afterId: string | null = null;
+    let truncated = false;
+    try {
+      for (let page = 0; ; page += 1) {
+        const url = new URL(base);
+        if (anthropic) {
+          url.searchParams.set('limit', '1000');
+          if (afterId) url.searchParams.set('after_id', afterId);
+        }
+        const payload = await this.fetchModelPage(url, route, credential, signal);
+        const data = Array.isArray(payload?.data) ? payload.data : null;
+        if (!data) return failed('INVALID_RESPONSE');
+        for (const raw of data) {
+          if (models.length >= MAX_LISTED_MODELS) { truncated = true; break; }
+          const listed = listedModel(raw, anthropic);
+          if (listed && !models.some(model => model.id === listed.id)) models.push(listed);
+        }
+        // Anthropic pages with has_more/last_id; OpenAI-compatible catalogs answer in one page.
+        const next = anthropic && payload.has_more === true && typeof payload.last_id === 'string' && payload.last_id ? payload.last_id : null;
+        if (!next || truncated) break;
+        if (page + 1 >= MAX_MODEL_PAGES) { truncated = true; break; }
+        afterId = next;
+      }
+    } catch (error) {
+      signal?.throwIfAborted();
+      return failed(...classifyModelListError(error));
+    }
+    return { credentialId: credential.id, ok: true, models, ...(truncated ? { truncated: true } : {}) };
+  }
+
+  private async fetchModelPage(url: URL, route: ReadinessRoute, credential: ReadinessCredential, signal?: AbortSignal): Promise<any> {
+    const response = await fetchWithPolicy(url, {
+      headers: route.id === 'anthropic'
+        ? { 'x-api-key': credential.secret, 'anthropic-version': '2023-06-01',
+          ...(route.workspaceId ? { 'anthropic-workspace-id': route.workspaceId } : {}) }
+        : { authorization: `Bearer ${credential.secret}` }, ...(signal ? { signal } : {}),
+    }, { safety: 'safe', maxAttempts: 1, timeoutMs: Math.min(this.timeoutMs, 15_000), maxTotalDelayMs: 0 });
+    let payload: any;
+    try { payload = await readResponseJsonBounded<any>(response, 4 * 1024 * 1024, 'provider model list'); }
+    catch (error) {
+      // An error page that is not JSON still has a status worth explaining; a 200 that is not JSON is a broken catalog.
+      if (response.ok) throw new ModelListShapeError(error);
+      payload = undefined;
+    }
+    if (!response.ok) {
+      const observation = observeProviderResponse(response, payload);
+      throw new AgentProviderRequestError({ status: response.status, message: 'MODEL_LIST_UNAVAILABLE',
         safeCode: observation.errorCode, safeType: observation.errorType,
         retryAfterMs: observation.retryAfterMs, resetAtMs: observation.resetAtMs });
     }

@@ -289,6 +289,25 @@ async function handleRequest(
       return;
     }
 
+    const providerTestMatch = route.match(/^\/agent\/chat\/providers\/([^/]+)\/test$/);
+    if (providerTestMatch) {
+      if (request.method !== 'POST') {
+        sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'POST' });
+        return;
+      }
+      if (firstHeader(request.headers['x-agent-core-chat-origin']) === 'external-controller') {
+        sendJson(response, 403, { error: 'agent_chat_provider_test_owner_only' });
+        return;
+      }
+      try {
+        sendJson(response, 200, { test: await chat.testProvider(decodeURIComponent(providerTestMatch[1]!)) });
+      } catch (error) {
+        const unknown = error instanceof URIError || (error instanceof Error && error.message === 'AGENT_CHAT_PROVIDER_UNKNOWN');
+        sendJson(response, unknown ? 404 : 500, { error: unknown ? 'agent_chat_provider_unknown' : 'agent_chat_provider_test_failed' });
+      }
+      return;
+    }
+
     if (route === '/agent/chat/selection') {
       if (request.method !== 'PUT') {
         sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'PUT' });

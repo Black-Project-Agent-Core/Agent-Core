@@ -266,6 +266,20 @@ public sealed class AgentCoreRuntime : IDisposable
         return await SendAgentChatJsonAsync(request);
     }
 
+    /// <summary>Router page key test: lists the models each key of one configured provider can see (POST /agent/chat/providers/{id}/test).</summary>
+    public async Task<JsonElement> TestAgentProviderAsync(string providerId)
+    {
+        var id = Uri.EscapeDataString(providerId);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+        using var request = CreateAgentChatRequest(HttpMethod.Post, $"/agent/chat/providers/{id}/test");
+        using var response = await _agentHttp.SendAsync(request, timeout.Token);
+        if (!response.IsSuccessStatusCode)
+            throw await CreateAgentChatExceptionAsync(response);
+        var body = await response.Content.ReadAsStringAsync(timeout.Token);
+        using var document = JsonDocument.Parse(body);
+        return document.RootElement.Clone();
+    }
+
     /// <summary>Slash menu entries of the chat composer: the /compact command first, then the active Skills.</summary>
     public async Task<JsonElement> ListSlashCommandsAsync()
     {

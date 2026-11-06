@@ -22,7 +22,7 @@ import {
 } from './agent-provider-scheduler.js';
 import type { AgentCapabilityFamily } from './agent-capability-catalog.js';
 import type { AgentCapabilityPolicyMode } from './agent-capability-resolver.js';
-import { MODEL_CONTEXT_INSUFFICIENT_FOR_REQUEST, ProviderModelReadinessService, REASONING_EFFORT_LEVELS } from './agent-provider-readiness.js';
+import { MODEL_CONTEXT_INSUFFICIENT_FOR_REQUEST, ProviderModelReadinessService, REASONING_EFFORT_LEVELS, type ProviderModelTestReport } from './agent-provider-readiness.js';
 import type { AgentReasoningEffort, ProviderModelReadiness } from './agent-provider-state.js';
 
 export function validateAgentReasoningEffort(value: unknown, routeId?: string, supported?: readonly AgentReasoningEffort[]): asserts value is AgentReasoningEffort | undefined {
@@ -810,6 +810,12 @@ export class OpenAICompatibleProviderPool {
         .filter((model): model is string => Boolean(model))
         .map(model => this.readiness.refreshCatalogEfforts({ ...route, model }, keyed, signal)));
     }
+  }
+
+  /** Owner key test for one configured route: every key lists its models. Null when the route is not configured here. */
+  testProviderModels(routeId: string, signal?: AbortSignal): Promise<ProviderModelTestReport> | null {
+    const route = this.routes.find(item => item.id === routeId);
+    return route ? this.readiness.testRoute(route, route.credentials, signal) : null;
   }
 
   private async prepareConfiguredModels(): Promise<void> {
