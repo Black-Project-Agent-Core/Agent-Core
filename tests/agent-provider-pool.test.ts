@@ -11,7 +11,7 @@ import {
 } from '../src/agent-provider.js';
 import { loadConfig } from '../src/config.js';
 import { ProviderStateStore } from '../src/agent-provider-state.js';
-import { AgentProviderRequestError, classifyAgentProviderFailure } from '../src/agent-provider-errors.js';
+import { AgentProviderEmptyResponseError, AgentProviderRequestError, classifyAgentProviderFailure } from '../src/agent-provider-errors.js';
 import { PersistentCredentialScheduler } from '../src/agent-provider-scheduler.js';
 
 const roots: string[] = [];
@@ -182,6 +182,28 @@ describe('OpenAICompatibleProviderPool persistent routing', () => {
     expect(seen.at(-1)).toBe('Bearer secret-2');
   });
 
+  it('releases the locked credentials of one route, reports only a count, and ignores an unknown route', async () => {
+    const { statePath } = await fixturePath();
+    fixtureFetch(async (_url: URL, init?: RequestInit) => auth(init) === 'Bearer secret-1'
+      ? new Response(JSON.stringify({ error: { message: 'rate limit exceeded' } }), {
+        status: 429,
+        headers: { 'content-type': 'application/json', 'retry-after': '120' },
+      })
+      : success('fallback-ok'));
+    const pool = new OpenAICompatibleProviderPool(config(['secret-1', 'secret-2'], 2), statePath);
+    await pool.complete([{ role: 'user', content: 'rate test' }]);
+    const locked = () => {
+      const route = pool.health().routes?.find(item => item.id === 'openrouter');
+      return (route?.cooldownKeyCount ?? 0) + (route?.quotaBlockedKeyCount ?? 0);
+    };
+    expect(locked()).toBe(1);
+    const released = pool.resetRouteCredentials('openrouter');
+    expect(released).toBeGreaterThanOrEqual(1);
+    expect(Number.isInteger(released)).toBe(true);
+    expect(locked()).toBe(0);
+    expect(pool.resetRouteCredentials('ghost')).toBe(0);
+  });
+
   it('moves to the next provider on provider-scoped failure and retains it for a new session', async () => {
     const { statePath } = await fixturePath();
     const seen: string[] = [];
@@ -250,6 +272,21 @@ describe('OpenAICompatibleProviderPool persistent routing', () => {
       });
       const pool = new OpenAICompatibleProviderPool(twoRoutes(), statePath);
       await expect(pool.complete([{ role: 'user', content: 'pin b fails' }], [], undefined, undefined, { routeId: 'b' }))
+        .rejects.toBeInstanceOf(AgentProviderPoolPausedError);
+      expect(seen.length).toBeGreaterThan(0);
+      expect(new Set(seen)).toEqual(new Set(['Bearer route-b']));
+    });
+
+    it('keeps the chosen route when it answers empty and pauses instead of answering from another route', async () => {
+      const { statePath } = await fixturePath();
+      const seen: string[] = [];
+      fixtureFetch(async (_url: URL, init?: RequestInit) => {
+        seen.push(auth(init) ?? '');
+        return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: null } }] }),
+          { status: 200, headers: { 'content-type': 'application/json' } });
+      });
+      const pool = new OpenAICompatibleProviderPool(twoRoutes(), statePath);
+      await expect(pool.complete([{ role: 'user', content: 'pin b empty' }], [], undefined, undefined, { routeId: 'b' }))
         .rejects.toBeInstanceOf(AgentProviderPoolPausedError);
       expect(seen.length).toBeGreaterThan(0);
       expect(new Set(seen)).toEqual(new Set(['Bearer route-b']));
@@ -717,6 +754,37 @@ describe('OpenAICompatibleProviderPool routing evidence', () => {
     const route = paused.routes.find((item: any) => item.providerId === 'openrouter');
     expect(route).toMatchObject({ configured: 3, eligible: 1, status: 'available' });
     expect(route.skipped).toEqual({ 'rate-limit': 2 });
+  });
+
+  it('treats an empty reply as a temporary failure: sibling key next, no success recorded, no rate-limit escalation', async () => {
+    const { statePath } = await fixturePath();
+    const seen: string[] = [];
+    const events: AgentProviderRoutingEvent[] = [];
+    fixtureFetch(async (_url: URL, init?: RequestInit) => {
+      const header = auth(init) ?? '';
+      seen.push(header);
+      if (header === 'Bearer secret-1') return new Response(JSON.stringify({
+        choices: [{ finish_reason: 'stop', message: { content: '', tool_calls: [] } }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return success('fallback-ok');
+    });
+    const pool = new OpenAICompatibleProviderPool(config(['secret-1', 'secret-2'], 2), statePath);
+    const result = await pool.complete([{ role: 'user', content: 'empty test' }], [], undefined, undefined,
+      { onRouting: event => { events.push(event); } });
+    expect(result.content).toBe('fallback-ok');
+    expect(seen).toEqual(['Bearer secret-1', 'Bearer secret-2']);
+    expect(events.filter(event => event.type === 'success').map(event => event.key.credentialId)).toEqual(['openrouter:02']);
+    expect(events.find(event => event.type === 'failure')).toMatchObject({
+      key: { credentialId: 'openrouter:01' }, failureClass: 'EMPTY_RESPONSE', scope: 'model-credential', httpStatus: null, failover: true,
+    });
+    const db = new DatabaseSync(statePath, { readOnly: true });
+    const row = db.prepare('SELECT backoff_level, last_error_class FROM provider_credential_state WHERE credential_id = ?').get('openrouter:01') as any;
+    db.close();
+    expect(row).toMatchObject({ backoff_level: 0, last_error_class: 'EMPTY_RESPONSE' });
+    const decision = classifyAgentProviderFailure(new AgentProviderEmptyResponseError('stop'));
+    expect(decision).toMatchObject({ failureClass: 'EMPTY_RESPONSE', scope: 'model-credential', shouldFailover: true,
+      terminalCredential: false, affectsProviderBreaker: false });
+    expect(decision.cooldownMs).toBeLessThanOrEqual(60_000);
   });
 
   it('keeps a request-scoped failure from rotating or cooling any key', async () => {

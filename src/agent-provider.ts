@@ -5,6 +5,7 @@ import { readResponseJsonBounded } from './net/bounded-response.js';
 import { AnthropicStreamError, readAnthropicMessageStream, statusForStreamError } from './anthropic-stream.js';
 import { redactSensitiveString } from './security/redaction.js';
 import {
+  AgentProviderEmptyResponseError,
   AgentProviderRequestError,
   classifyAgentProviderFailure,
   observeProviderResponse,
@@ -39,6 +40,7 @@ export function validateAgentProviderModel(value: unknown, routeId?: string, sup
 import {
   accountContext, completionCap, contextBytes, contextRefusal, pictureTokens, type ContextAccounting, type ObservedContextUsage,
 } from './agent-context-accounting.js';
+import { classifyFinishReason } from './agent-turn-outcomes.js';
 
 export interface AgentProviderCredentialConfig {
   id: string;
@@ -601,6 +603,14 @@ export class OpenAICompatibleProvider {
     const content = message.content === null || message.content === undefined
       ? null
       : String(message.content).slice(0, 200_000);
+    const finishReason = choice?.finish_reason === undefined || choice.finish_reason === null
+      ? null
+      : String(choice.finish_reason).slice(0, 100);
+    // An accepted reply that carries nothing is not a success: the turn would end without an answer and
+    // the credential's failure history would be cleared. A provider refusal legitimately has no content.
+    if (!toolCalls.length && !content?.trim() && classifyFinishReason(finishReason) !== 'refused-by-provider') {
+      throw new AgentProviderEmptyResponseError(finishReason);
+    }
     const reportedModel = typeof payload.model === 'string' ? payload.model.trim() : '';
     const cacheUsage: { cacheReadInputTokens?: number; cacheWriteInputTokens?: number } = {};
     for (const [wire, field] of [['cached_tokens', 'cacheReadInputTokens'], ['cache_write_tokens', 'cacheWriteInputTokens']] as const) {
@@ -622,9 +632,7 @@ export class OpenAICompatibleProvider {
       resolvedModel: reportedModel && reportedModel !== 'openrouter/free'
         && reportedModel.length <= 240 && !/[\u0000-\u001f\u007f]/.test(reportedModel)
         ? reportedModel : null,
-      finishReason: choice?.finish_reason === undefined || choice.finish_reason === null
-        ? null
-        : String(choice.finish_reason).slice(0, 100),
+      finishReason,
       elapsedMs: Math.max(0, performance.now() - startedAt),
       ...(payload.usage && typeof payload.usage === 'object' ? { usage: {
         ...cacheUsage,

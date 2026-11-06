@@ -9,6 +9,7 @@ export type AgentProviderFailureClass =
   | 'MODEL_CAPACITY'
   | 'PROVIDER_TRANSIENT'
   | 'TRANSPORT_TRANSIENT'
+  | 'EMPTY_RESPONSE'
   | 'INTERNAL_CONTRACT';
 
 export type AgentProviderFailureScope =
@@ -159,6 +160,18 @@ export class AgentProviderRequestError extends Error {
   }
 }
 
+/**
+ * HTTP 200 with no text, no tool call and no legitimate refusal: the model gave nothing to act on (for
+ * example a thinking-only Anthropic turn, or a gateway that dropped the content). The finish reason is
+ * kept for evidence; the body is not, so nothing from the provider can leak into logs.
+ */
+export class AgentProviderEmptyResponseError extends Error {
+  constructor(readonly finishReason: string | null) {
+    super(`AGENT_RUNTIME_PROVIDER_RESPONSE_EMPTY:${finishReason ?? 'none'}`);
+    this.name = 'AgentProviderEmptyResponseError';
+  }
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase();
 }
@@ -209,6 +222,15 @@ export function classifyAgentProviderFailure(
   error: unknown,
   now = Date.now(),
 ): AgentProviderFailureDecision {
+  if (error instanceof AgentProviderEmptyResponseError) {
+    // Same key/model may answer next time; a short block lets a sibling key or route try first,
+    // without the RATE_LIMIT backoff escalation or the provider breaker.
+    return {
+      failureClass: 'EMPTY_RESPONSE', scope: 'model-credential', shouldFailover: true,
+      terminalCredential: false, affectsProviderBreaker: false,
+      cooldownMs: 20 * SECOND, retryAtMs: now + 20 * SECOND,
+    };
+  }
   const rawText = errorMessage(error);
   const text = error instanceof AgentProviderRequestError
     ? [rawText, error.safeCode ?? '', error.safeType ?? ''].join(' ').toLowerCase()

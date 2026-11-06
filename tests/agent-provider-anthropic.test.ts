@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OpenAICompatibleProvider, OpenAICompatibleProviderPool, validateAnthropicContent,
   type AgentAnthropicContentBlock, type AgentModelMessage, type AgentModelTool } from '../src/agent-provider.js';
-import { AgentProviderRequestError } from '../src/agent-provider-errors.js';
+import { AgentProviderEmptyResponseError, AgentProviderRequestError } from '../src/agent-provider-errors.js';
 
 const config = {
   enabled: true,
@@ -479,6 +479,26 @@ describe('Anthropic native Messages provider', () => {
     expect(result).toMatchObject({ content: 'Working', finishReason: 'tool_use', resolvedModel: 'claude-fixture-resolved',
       toolCalls: [{ id: 'call-1', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } }],
       usage: { inputTokens: 21, outputTokens: 3, totalTokens: 24, cacheReadInputTokens: 5, cacheWriteInputTokens: 4 } });
+  });
+
+  it('rejects a stream that ends with no text and no tool call as an empty response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => sse([
+      ['message_start', { message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'm', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 1 } } }],
+      ['content_block_start', { index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } }],
+      ['content_block_delta', { index: 0, delta: { type: 'signature_delta', signature: 'sig' } }],
+      ['content_block_stop', { index: 0 }],
+      ['message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 3 } }],
+      ['message_stop', {}],
+    ])));
+    const failure = await provider().complete([{ role: 'user', content: 'Hello' }]).catch(error => error);
+    expect(failure).toBeInstanceOf(AgentProviderEmptyResponseError);
+    expect(failure.message).toBe('AGENT_RUNTIME_PROVIDER_RESPONSE_EMPTY:end_turn');
+  });
+
+  it('keeps a legitimate refusal with no content as a normal reply', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json(message([], { stop_reason: 'refusal' }))));
+    const result = await provider().complete([{ role: 'user', content: 'Hello' }]);
+    expect(result).toMatchObject({ content: null, toolCalls: [], finishReason: 'refusal' });
   });
 
   it('classifies an error event inside a stream like the same HTTP status', async () => {
