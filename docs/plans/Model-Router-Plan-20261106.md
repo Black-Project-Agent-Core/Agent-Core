@@ -52,7 +52,7 @@ Agent Core menjadi satu-satunya router model di mesin ini, sehingga router lain 
 
 - **Kunci klien terpisah dari kunci MCP.** Router memakai `FileKeyStore` dengan folder data sendiri, jadi kunci router tidak berlaku di MCP dan sebaliknya. Pencabutan harus terlihat seketika oleh proses router.
 - **"Manajemen pengguna" berarti klien router.** Agent Core dirancang untuk satu pemilik. Setiap aplikasi klien mendapat kunci atau token sendiri, dengan batas dan riwayatnya, dan bisa dicabut. Multi-akun manusia tidak dibangun.
-- **OAuth 2.0 untuk akses ke router, bukan untuk masuk ke akun langganan provider.** Ini tafsir supervisor yang belum dikonfirmasi; 9router memakai OAuth untuk akun langganan, jadi user mungkin memaksudkan itu. Adapter OAuth, cookie, dan TLS-fingerprint gaya 9router tidak ditiru karena berisiko melanggar ketentuan provider. Fase 7 tidak dimulai sebelum tafsir ini dikonfirmasi. Fase ini mengubah `src/oauth/` dan `src/auth/key-store.ts` untuk menambah scope `router:*`, karena `MCP_SCOPE` sekarang tunggal.
+- **OAuth 2.0 untuk akses ke router, bukan untuk masuk ke akun langganan provider.** Dikonfirmasi user pada 2026-11-06. Adapter OAuth, cookie, dan TLS-fingerprint gaya 9router tidak ditiru karena berisiko melanggar ketentuan provider. Fase 7 mengubah `src/oauth/` dan `src/auth/key-store.ts` untuk menambah scope `router:*`, karena `MCP_SCOPE` sekarang tunggal.
 
 ### Data dan cache
 
@@ -77,18 +77,18 @@ Fase berikutnya dikirim setelah fase sebelumnya diverifikasi supervisor dari fil
 | 4 | Riwayat permintaan | Penyimpanan metadata, token dan cache per permintaan dari salinan stream, retensi, ekspor CSV dan JSON, pemantauan langsung | Angka token sama dengan laporan provider; ekspor aman dari formula injection; tidak ada isi prompt atau kunci | Sonnet | Belum |
 | 5 | Caching | Prompt caching 1 jam per klien, cache respons opsional | Tes menunjukkan token cache-read pada permintaan kedua; hit cache respons terbukti saat aktif, ditandai, dan terpisah per klien | Fable | Belum |
 | 6 | Analitik, kuota, biaya | Grafik interaktif harian, mingguan, bulanan; persentase prompt caching; parser header Anthropic; tabel harga; notifikasi mendekati batas | Grafik memakai data riwayat nyata; sumber kuota dan biaya tertulis per provider; notifikasi muncul sekali per ambang; bisa dipakai keyboard | Sonnet | Belum |
-| 7 | Admin dan OAuth | Kelola klien router, pencabutan, batas per klien, scope `router:*` di `src/oauth/` | Tafsir OAuth dikonfirmasi user; klien yang dicabut langsung ditolak; token berscope router tidak bisa memanggil tool MCP | Fable | Belum |
+| 7 | Admin dan OAuth | Kelola klien router, pencabutan, batas per klien, scope `router:*` di `src/oauth/` | Klien yang dicabut langsung ditolak; token berscope router tidak bisa memanggil tool MCP | Fable | Belum |
 | 8 | Cutover klien | Klien nyata dialihkan, konfigurasi router lama dibersihkan | Definisi selesai terbukti; rollback tertulis | Supervisor | Belum |
 
 Haiku memegang tugas sempit di tiap fase: registri provider (satu pemilik, Fable hanya memakainya), dokumen, dan pemeriksaan.
 
 ## Yang sengaja tidak dibangun
 
-Multi-akun manusia, jalur masuk publik, OAuth langganan provider (menunggu konfirmasi di fase 7), penerjemah lintas dialek, toast Windows, fusion dan smart routing, serta adapter yang menyamar sebagai aplikasi lain. Combo fallback pilihan pengguna ditinjau sesudah fase 3.
+Multi-akun manusia, jalur masuk publik, OAuth langganan provider, penerjemah lintas dialek, toast Windows, fusion dan smart routing, serta adapter yang menyamar sebagai aplikasi lain. Combo fallback pilihan pengguna ditinjau sesudah fase 3.
 
 ## Langkah manual user
 
-Tidak ada untuk fase 1 sampai 6 bila kunci sudah ada di `.env`. Konfirmasi tafsir OAuth sebelum fase 7. Menghapus kunci dari `.env` dan mengalihkan klien nyata diputuskan user di fase 8.
+Tidak ada untuk fase 1 sampai 7 bila kunci sudah ada di `.env`. Menghapus kunci dari `.env` dan mengalihkan klien nyata diputuskan user di fase 8.
 
 ## Belum terbukti, diperiksa di fase pemiliknya
 
