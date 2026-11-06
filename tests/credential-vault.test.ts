@@ -56,16 +56,49 @@ describe('credential vault', () => {
     expect(buildMachineShellEnv({}, env)).not.toHaveProperty('ANTHROPIC_API_KEY_01');
   });
 
-  it('is the source of truth on later starts: a key gone from .env still fills its slot, a new key takes a free slot', () => {
-    applyCredentialVault({ ANTHROPIC_API_KEY_01: KEY_A }, { dir, protector: fakeProtector('owner') });
+  it('is the source of truth on later starts: a key gone from .env still fills its slot', () => {
+    applyCredentialVault({ ANTHROPIC_API_KEY_01: KEY_A, ANTHROPIC_API_KEY_02: KEY_B }, { dir, protector: fakeProtector('owner') });
 
-    const env: NodeJS.ProcessEnv = { ANTHROPIC_API_KEY_01: KEY_C };
+    const env: NodeJS.ProcessEnv = { ANTHROPIC_API_KEY_02: KEY_B };
     const status = applyCredentialVault(env, { dir, protector: fakeProtector('owner') });
 
-    expect(status.importedCount).toBe(1);
-    expect(status.entryCount).toBe(2);
+    expect(status).toMatchObject({ importedCount: 0, entryCount: 2, deletedCount: 0 });
     expect(env.ANTHROPIC_API_KEY_01).toBe(KEY_A);
-    expect(env.ANTHROPIC_API_KEY_02).toBe(KEY_C);
+    expect(env.ANTHROPIC_API_KEY_02).toBe(KEY_B);
+  });
+
+  it('treats a different key in the same .env slot as a rotation: the old entry is replaced and retired', () => {
+    applyCredentialVault({ ANTHROPIC_API_KEY_01: KEY_A, ANTHROPIC_API_KEY_02: KEY_B }, { dir, protector: fakeProtector('owner') });
+
+    const env: NodeJS.ProcessEnv = { ANTHROPIC_API_KEY_01: KEY_C, ANTHROPIC_API_KEY_02: KEY_B };
+    const status = applyCredentialVault(env, { dir, protector: fakeProtector('owner') });
+
+    expect(status).toMatchObject({ importedCount: 1, entryCount: 2, deletedCount: 1 });
+    expect(env.ANTHROPIC_API_KEY_01).toBe(KEY_C);
+    expect(env.ANTHROPIC_API_KEY_02).toBe(KEY_B);
+    expect(Object.values(env)).not.toContain(KEY_A);
+    expect(fs.readFileSync(vaultFile(), 'utf8')).not.toContain(KEY_A);
+  });
+
+  it('does not revive a rotated-out key that is put back into .env', () => {
+    applyCredentialVault({ ANTHROPIC_API_KEY_01: KEY_A }, { dir, protector: fakeProtector('owner') });
+    applyCredentialVault({ ANTHROPIC_API_KEY_01: KEY_C }, { dir, protector: fakeProtector('owner') });
+
+    const env: NodeJS.ProcessEnv = { ANTHROPIC_API_KEY_01: KEY_A };
+    const status = applyCredentialVault(env, { dir, protector: fakeProtector('owner') });
+
+    expect(status).toMatchObject({ importedCount: 0, entryCount: 1, deletedCount: 1 });
+    expect(env.ANTHROPIC_API_KEY_01).toBe(KEY_C);
+  });
+
+  it('stores a new key once even when .env repeats it in another slot', () => {
+    applyCredentialVault({ ANTHROPIC_API_KEY_01: KEY_A }, { dir, protector: fakeProtector('owner') });
+
+    const env: NodeJS.ProcessEnv = { ANTHROPIC_API_KEY_01: KEY_C, ANTHROPIC_API_KEY_02: KEY_C };
+    const status = applyCredentialVault(env, { dir, protector: fakeProtector('owner') });
+
+    expect(status).toMatchObject({ importedCount: 1, entryCount: 1, deletedCount: 1 });
+    expect(Object.entries(env).filter(([, value]) => value === KEY_C)).toHaveLength(1);
   });
 
   it('never imports a removed key again while it is still in .env', () => {
@@ -195,17 +228,17 @@ describe('credential vault', () => {
     expect(again.OPENROUTER_API_KEY_01).toBe(KEY_A);
   });
 
-  it('reports a provider whose 20 slots are full and does not import the extra key', () => {
+  it('rotates within a provider whose 20 slots are full instead of dropping the new key', () => {
     const full: NodeJS.ProcessEnv = {};
     for (let slot = 1; slot <= 20; slot += 1) full[`ANTHROPIC_API_KEY_${String(slot).padStart(2, '0')}`] = `sk-ant-full-${slot}-000000000000000000000000`;
     expect(applyCredentialVault(full, { dir, protector: fakeProtector('owner') }).entryCount).toBe(20);
 
     const env: NodeJS.ProcessEnv = { ANTHROPIC_API_KEY_01: KEY_C };
     const status = applyCredentialVault(env, { dir, protector: fakeProtector('owner') });
-    expect(status).toMatchObject({ status: 'active', entryCount: 20, importedCount: 0, issueCount: 1, issue: 'VAULT_SLOTS_FULL' });
-    expect(fs.readFileSync(vaultFile(), 'utf8')).not.toContain('charlie');
+    expect(status).toMatchObject({ status: 'active', entryCount: 20, importedCount: 1, deletedCount: 1, issueCount: 0 });
+    expect(env.ANTHROPIC_API_KEY_01).toBe(KEY_C);
     expect(Object.keys(env).filter(key => key.startsWith('ANTHROPIC_API_KEY_'))).toHaveLength(20);
-    expect(Object.values(env)).not.toContain(KEY_C);
+    expect(Object.values(env)).not.toContain('sk-ant-full-1-000000000000000000000000');
   });
 
   it('uses the launcher only as a regular file beside the module project root', () => {

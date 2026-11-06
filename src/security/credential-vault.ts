@@ -1,8 +1,9 @@
 /**
  * Encrypted store for the numbered provider keys (`<PREFIX>_API_KEY_NN`) under `secrets/`.
  *
- * `.env` is only an import source: new keys found there are added once, then every slot is cleared and refilled from
- * the vault, so a key the owner removed from the vault stays out even while it is still written in `.env`. Each
+ * `.env` is only an import source: new keys found there are added once (a different key in a slot the vault already
+ * holds replaces and retires the old one), then every slot is cleared and refilled from the vault, so a key the owner
+ * removed or rotated out stays out even while it is still written in `.env`. Each
  * entry is AES-256-GCM under its own HKDF-derived key, bound by additional data to its provider and slot; a salted
  * HMAC fingerprint (per provider) recognises a key without opening it, and a file MAC covers the entry and deleted
  * lists. The master key is protected by Windows DPAPI (user scope) through the launcher helper
@@ -231,13 +232,6 @@ function numberedSlots(env: NodeJS.ProcessEnv) {
   return found;
 }
 
-function freeSlot(entries: VaultEntry[], prefix: string, preferred: number): number | null {
-  const taken = new Set(entries.filter(entry => entry.prefix === prefix).map(entry => entry.slot));
-  if (!taken.has(preferred)) return preferred;
-  for (let slot = 1; slot <= SLOT_MAX; slot += 1) if (!taken.has(slot)) return slot;
-  return null;
-}
-
 function summarize(vault: OpenVault, imported: number, issue?: string): CredentialVaultStatus {
   const providers: Record<string, number> = {};
   for (const entry of vault.file.entries) {
@@ -269,14 +263,18 @@ export function applyCredentialVault(env: NodeJS.ProcessEnv, options: Credential
 
   let imported = 0;
   let issue: string | undefined;
-  const skipped = new Set<string>();
   for (const slot of found) {
     if (!slot.value) continue;
     const fingerprint = fingerprintOf(vault.master, slot.prefix, slot.value);
     if (vault.secrets.has(fingerprint) || vault.file.deleted.includes(fingerprint)) continue;
-    const target = freeSlot(vault.file.entries, slot.prefix, slot.slot);
-    if (target === null) { skipped.add(slot.key); issue = 'VAULT_SLOTS_FULL'; continue; }
-    vault.file.entries.push(encrypt(vault.master, slot.prefix, target, slot.value));
+    // A different key in a slot the vault already holds is a rotation: the old key is retired, never kept alongside.
+    const index = vault.file.entries.findIndex(entry => entry.prefix === slot.prefix && entry.slot === slot.slot);
+    if (index >= 0) {
+      const [replaced] = vault.file.entries.splice(index, 1);
+      vault.secrets.delete(replaced!.fingerprint);
+      if (!vault.file.deleted.includes(replaced!.fingerprint)) vault.file.deleted.push(replaced!.fingerprint);
+    }
+    vault.file.entries.push(encrypt(vault.master, slot.prefix, slot.slot, slot.value));
     vault.secrets.set(fingerprint, slot.value);
     imported += 1;
   }
@@ -286,8 +284,7 @@ export function applyCredentialVault(env: NodeJS.ProcessEnv, options: Credential
     }
   }
 
-  // A key the vault could not take stays in the environment, unless the vault fills that very slot.
-  for (const slot of found) if (!skipped.has(slot.key)) delete env[slot.key];
+  for (const slot of found) delete env[slot.key];
   for (const entry of vault.file.entries) {
     const key = slotKey(entry.prefix, entry.slot);
     env[key] = vault.secrets.get(entry.fingerprint);
