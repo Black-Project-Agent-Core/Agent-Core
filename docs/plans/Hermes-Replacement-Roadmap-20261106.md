@@ -1,6 +1,6 @@
 # Roadmap: Agent Core menggantikan Hermes
 
-Tanggal: 2026-11-06. Status: OPEN, aktif. Pemilik: sesi supervisor (Opus 5.5), pekerja sesi Sonnet 5.5 dan Haiku 5.5.
+Tanggal: 2026-11-06. Status: DITUNDA oleh user pada 2026-11-06 demi Model Router (`docs/plans/Model-Router-Plan-20261106.md`). Kode gateway terparkir di branch lokal `wip/message-gateway-core`. Pemilik: sesi supervisor (Opus 5.5).
 
 Dokumen ini adalah satu-satunya sumber urutan kerja untuk tujuan ini. Status implementasi aktual tetap di `docs/CODEBASE.md`.
 
