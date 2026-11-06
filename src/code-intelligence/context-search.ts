@@ -67,12 +67,15 @@ export type IndexTruncation = 'max-files' | 'max-chunks' | 'time-budget' | 'toke
 // already excludes, plus private folders. A denied name is dropped silently, links included, so its name never
 // reaches the skip samples.
 const DENY_ANYWHERE = new Set([
-  '.git', 'node_modules', 'dist', 'build', 'coverage', 'bin', 'obj', 'runtime', 'release',
+  '.git', 'node_modules', 'dist', 'build', 'coverage', 'bin', 'obj',
   'backups', 'secrets', '_artifacts', 'launcher-publish', '.tmp', 'do not touch without instruction explicit',
   '.ssh', '.aws', '.gnupg', '.docker', '.secrets', '.credentials',
 ]);
+// `release` and `runtime` are state folders at the top of an install. Only directly under the workspace root they are
+// excluded; a nested folder with the same name holds ordinary code (scripts/release, src/runtime) and stays indexed.
+const STATE_FOLDER_NAMES = ['release', 'runtime'];
 // Only directly under the workspace root.
-const DENY_TOP_LEVEL = new Set(['subproject', 'rdc', '.rdc-standalone', '.grafel']);
+const DENY_TOP_LEVEL = new Set(['subproject', 'rdc', '.rdc-standalone', '.grafel', ...STATE_FOLDER_NAMES]);
 // Names that hold secrets, for files and folders alike. isCredentialFileName (security/credential-names) adds
 // .env files, key and certificate extensions, and editor backup copies of them.
 const DENY_NAME: RegExp[] = [
@@ -1116,7 +1119,10 @@ export async function assertSearchRoot(root: string, repoRoot: string): Promise<
     return;
   }
   if (isInside(target, repo)) throw new Error('CODE_CONTEXT_ROOT_TOO_BROAD');
-  if (isDeniedEntry(path.basename(path.resolve(root)), false) || isDeniedEntry(path.basename(target), false)) {
+  // A folder outside the repository that is itself a state folder (release, runtime) is refused by name, as before:
+  // the top-level rule covers folders inside a workspace, not a root that is the state folder.
+  const rootNames = [path.basename(path.resolve(root)), path.basename(target)];
+  if (rootNames.some(name => isDeniedEntry(name, false) || STATE_FOLDER_NAMES.includes(name.toLowerCase()))) {
     throw new Error('CODE_CONTEXT_ROOT_DENIED');
   }
 }
