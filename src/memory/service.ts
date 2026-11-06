@@ -1501,20 +1501,6 @@ export class MemoryService {
       let deliveryIds=new Set((await synthesisEligibility.validateDelivery(rankedResults.map(result=>result.record))).map(record=>record.id));
       rankedResults=rankedResults.filter(result=>deliveryIds.has(result.record.id));
       lap('rankAndValidate1');
-      for (const result of rankedResults) {
-        if (result.record.pinned||synthesisEligibility.summary().reasons.includes('deadline')) continue;
-        // Recency bookkeeping only (lastAccessedAt/retrievalCount); runs after the
-        // response so one slow full-store mutate() never blocks search latency.
-        void this.touch(result.record,result.record.category==='project-synthesis').catch((error) => {
-          if(result.record.category==='project-synthesis')synthesisEligibility.omit(result.record,'unknown');
-          const issue: MemoryIssue = {
-            path: this.store.paths.root,
-            message: `Recall metadata update failed for ${result.record.id}: ${error instanceof Error ? error.message : String(error)}`,
-            severity: 'degraded',
-          };
-          this.syncCanonicalIssues([...this.canonicalIssues, issue]);
-        });
-      }
       lap('touchLoop');
       deliveryIds=new Set((await synthesisEligibility.validateDelivery(rankedResults.map(result=>result.record))).map(record=>record.id));
       rankedResults=rankedResults.filter(result=>deliveryIds.has(result.record.id));
@@ -1619,6 +1605,21 @@ export class MemoryService {
       };
       reportSynthesisEligibility();
       await this.retrievalLedger.record(attempt).catch(() => undefined);
+      // Recency bookkeeping only (lastAccessedAt/retrievalCount). Each touch is a full-store commit under the
+      // memory lock, so it starts only after the ledger write above has taken that lock; started earlier, the
+      // ledger write (and this response) queued behind every touch.
+      for (const result of rankedResults) {
+        if (result.record.pinned||synthesisEligibility.summary().reasons.includes('deadline')) continue;
+        void this.touch(result.record,result.record.category==='project-synthesis').catch((error) => {
+          if(result.record.category==='project-synthesis')synthesisEligibility.omit(result.record,'unknown');
+          const issue: MemoryIssue = {
+            path: this.store.paths.root,
+            message: `Recall metadata update failed for ${result.record.id}: ${error instanceof Error ? error.message : String(error)}`,
+            severity: 'degraded',
+          };
+          this.syncCanonicalIssues([...this.canonicalIssues, issue]);
+        });
+      }
       lap('projectionAndLedger');
       try {
         activityTracker.record('MEMORY', 'info', 'memory_search stage timing', 'search-stage-timing',
