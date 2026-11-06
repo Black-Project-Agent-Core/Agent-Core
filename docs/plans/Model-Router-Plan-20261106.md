@@ -1,6 +1,6 @@
 # Rencana: Model Router Agent Core
 
-Tanggal: 2026-11-06. Status: OPEN, aktif. Revisi: 2, sesudah kritik Fable yang diverifikasi supervisor ke source. Pemilik: sesi supervisor (Opus 5.5). Pekerja: Fable 5.1, Sonnet 5.5, Haiku 5.5.
+Tanggal: 2026-11-06. Status: OPEN, aktif. Revisi: 3, urutan diubah atas instruksi user untuk memperkuat router yang ada; kritik Fable tetap berlaku. Pemilik: sesi supervisor (Opus 5.5). Pekerja: Fable 5.1, Sonnet 5.5, Haiku 5.5.
 
 Dokumen ini satu-satunya sumber urutan kerja router. Status implementasi aktual tetap di `docs/CODEBASE.md`. Roadmap penggantian Hermes ditunda.
 
@@ -20,7 +20,16 @@ Agent Core menjadi satu-satunya router model di mesin ini, sehingga router lain 
 
 ## Keputusan desain dan koreksi atas brief
 
-### Mesin routing
+### Arah: perkuat yang ada dulu
+
+Instruksi user 2026-11-06: fokus memperkuat router yang ada di Agent Core; pemanggil provider sudah tersedia. Yang ada sekarang: halaman Router yang masih berstatus "Not active" dan hanya mendaftar model yang pernah berhasil, pool provider dengan `PersistentCredentialScheduler`, `ProviderModelReadinessService`, `provider_quota_state`, token dan cache per turn di `chat_turns`, serta `src/effective-cost.ts`.
+
+- **Semua panggilan model sudah lewat pool, jadi pool adalah titik penguatan.** Vault, test provider, riwayat, prompt caching, dan analitik langsung berguna untuk panggilan yang sudah berjalan, tanpa menunggu API baru.
+- **Halaman Router menjadi halaman kerja.** Label "Not active" dan tombol "Enable Router" diganti sesuai fungsi yang sudah hidup. Pilihan model memakai pilihan yang sudah ada di AI Models, bukan pilihan kedua.
+- **Riwayat satu tempat.** Tabel per panggilan ditambahkan di bawah owner `agent-provider-state`, bukan penyimpanan baru. API lokal nanti menulis ke tabel yang sama. `chat_turns` tetap per turn.
+- **API untuk klien luar tetap dibangun, tetapi di fase 6.** Tujuan satu router di mesin ini tidak berubah. Fase ini hanya pindah ke belakang, karena kebanyakan isi brief tidak membutuhkannya.
+
+### API lokal untuk klien luar (fase 6)
 
 - **Proxy transparan, bukan `complete()`.** `OpenAICompatibleProvider.complete()` milik Native: ia memaksa `thinking`, `anthropic-beta`, `tool_choice`, dan `max_tokens`, membuang gambar pada jalur OpenAI, membatasi jumlah tool call, serta menyusun ulang stream sebelum kembali. Router tidak memakainya. Body klien diteruskan utuh dan SSE dialirkan apa adanya.
 - **Transformasi yang boleh, hanya ini:** kredensial ditukar; alias model diganti ke nama provider; `stream_options.include_usage` disisipkan pada jalur OpenAI bila klien tidak memintanya, dan frame usage tambahan itu tidak diteruskan ke klien; prompt caching disisipkan hanya bila kebijakan klien itu menyalakannya dan body klien belum memuat `cache_control`. Selain ini, body yang diterima provider harus identik dengan body klien, dan tes membuktikannya.
@@ -32,7 +41,7 @@ Agent Core menjadi satu-satunya router model di mesin ini, sehingga router lain 
 - **Batas sendiri.** `MAX_PROVIDER_POOL_ATTEMPTS` dan `requestTimeoutMs` milik Native tidak dipakai. Router punya batas percobaan, ukuran body, dan waktu idle stream sendiri.
 - **Tanpa rotasi diam-diam antar-model.** Failover antar-kunci mengikuti aturan yang ada. Fallback ke model lain hanya bila pengguna menyusun daftarnya sendiri, dan responsnya menyebut model yang menjawab.
 
-### Proses dan jaringan
+### Proses dan jaringan API lokal
 
 - **Proses anak sendiri, tetap TypeScript.** Router berjalan sebagai `dist/router/index.js` di port `AGENT_CORE_ROUTER_PORT`, dimulai launcher. Alasan utamanya pasti, bukan perkiraan: setiap rebuild atau restart Core akan memutus semua stream klien bila router menumpang proses Core. Alasan keduanya belum diukur: `DatabaseSync`, sharp, browser, dan LSP berbagi event loop dengan Core. `worker_thread` ditolak karena mati bersama Core.
 - **Polyglot.** Router adalah peran orkestrator I/O dan semua owner yang dipakai ulang ada di TypeScript. Go atau Rust baru dipertimbangkan bila log nyata menunjukkan Node menjadi hambatan.
@@ -42,7 +51,8 @@ Agent Core menjadi satu-satunya router model di mesin ini, sehingga router lain 
 ### Kredensial
 
 - **Enkripsi, bukan hash, untuk kunci.** Kunci API harus bisa dipakai lagi, jadi hash tidak bisa menjadi penyimpanannya. Tiap kredensial memakai AES-256-GCM dengan salt dan nonce acak sendiri; kunci per-entri diturunkan dengan HKDF. Hash ber-salt (HMAC) hanya untuk sidik jari: mengenali kunci yang sama tanpa membukanya.
-- **Satu pemilik kredensial sejak fase 2.** Vault dibuka di `loadConfig`, sesudah `process.loadEnvFile`. Kunci baru dari `.env` diimpor dulu. Lalu slot `<PROVIDER>_API_KEY_NN` yang dibaca `numberedCredentials` dikosongkan dan diisi dari vault, dan tiap slot didaftarkan lewat `recordAgentCoreOwnedSecretKey`. Vault jadi sumber yang berlaku, sehingga kunci yang dihapus pengguna tidak ikut terpakai meski masih ada di `.env`. Native dan router memakai jalur yang sama, jadi tidak ada masa dua sumber dan tidak ada cutover Native. Proses anak tetap tidak melihat nilainya, karena `buildOwnedChildEnv` membuang kunci sensitif.
+- **Vault di folder `secrets` yang sudah dilindungi aturan akses AI.**
+- **Satu pemilik kredensial sejak fase 1.** Vault dibuka di `loadConfig`, sesudah `process.loadEnvFile`. Kunci baru dari `.env` diimpor dulu. Lalu slot `<PROVIDER>_API_KEY_NN` yang dibaca `numberedCredentials` dikosongkan dan diisi dari vault, dan tiap slot didaftarkan lewat `recordAgentCoreOwnedSecretKey`. Vault jadi sumber yang berlaku, sehingga kunci yang dihapus pengguna tidak ikut terpakai meski masih ada di `.env`. Native dan router memakai jalur yang sama, jadi tidak ada masa dua sumber dan tidak ada cutover Native. Proses anak tetap tidak melihat nilainya, karena `buildOwnedChildEnv` membuang kunci sensitif.
 - **Gagal yang jujur.** Vault rusak atau master key tidak terbuka: `.env` tetap dipakai seperti sekarang, status vault tampil merah di UI dan `/health`, dan tidak ada penulisan ulang vault. Sesudah pengguna menghapus nilainya dari `.env`, keadaan yang sama menjadi gagal tertutup dengan sendirinya.
 - **Master key dilindungi DPAPI (lingkup user), lewat launcher.** `Agent Core.exe --dpapi-protect` dan `--dpapi-unprotect` membaca stdin dan menulis stdout; Core memanggilnya dengan `execFileSync`, siapa pun yang memulai Core. Ini menggantikan rencana PowerShell, yang berisiko diblokir Constrained Language Mode dan menambah waktu start. Ini menjadi `TryRunHelperMode` berikutnya di `src/launcher/Program.cs`, sebelum mutex, mengikuti pola helper stdin dan stdout yang sudah ada, jadi tidak ada instance GUI kedua. `ProtectedData` sudah ikut dalam build launcher. Bila exe tidak ada (kerja di Source), vault berstatus tidak tersedia dan `.env` dipakai.
 - **Batas perlindungan yang jujur.** Vault mencegah terbacanya kunci saat file dibuka tidak sengaja, termasuk oleh AI, dan saat file disalin ke mesin lain. Vault tidak menghentikan proses berniat buruk yang berjalan sebagai user yang sama, karena proses itu bisa memanggil DPAPI juga.
@@ -58,9 +68,9 @@ Agent Core menjadi satu-satunya router model di mesin ini, sehingga router lain 
 
 - **Isi prompt tidak disimpan di log.** Log berisi metadata: waktu, klien, provider, model, status, durasi, token, cache. Menyimpan isi adalah opsi yang mati secara default.
 - **Cache respons mati secara default.** Ini koreksi atas brief yang memintanya. Hanya untuk permintaan identik tanpa tool dan tanpa streaming, dipisah per klien dan per model, dengan TTL. Jawaban dari cache ditandai jelas. Cache yang salah terlihat seperti jawaban benar, jadi fitur ini harus diaktifkan sadar.
-- **Prompt caching 1 jam adalah kebijakan per klien.** Untuk Anthropic memakai TTL 1 jam pada `cache_control`; sintaks dan harganya dicek ke dokumentasi saat implementasi. Tulis cache 1 jam lebih mahal daripada 5 menit, jadi laporan memisahkan cache-read dari cache-write. Provider lain memakai caching otomatisnya sendiri, atau ditampilkan "tidak didukung".
+- **Prompt caching 1 jam: pengaturan pada pool dulu, kebijakan per klien di API lokal.** Pool sudah menyisipkan `cache_control` tanpa `ttl`; fase 4 menambah pilihan TTL 1 jam di sana. Untuk Anthropic memakai TTL 1 jam pada `cache_control`; sintaks dan harganya dicek ke dokumentasi saat implementasi. Tulis cache 1 jam lebih mahal daripada 5 menit, jadi laporan memisahkan cache-read dari cache-write. Provider lain memakai caching otomatisnya sendiri, atau ditampilkan "tidak didukung".
 - **Akurasi token berasal dari laporan provider.** Bila provider tidak melapor, nilainya ditandai perkiraan atau tidak diketahui, bukan dianggap pasti.
-- **Biaya.** Nilai dari provider dipakai bila dilaporkan. Selain itu dihitung dari tabel harga berupa data registri yang bertanggal dan bisa diedit, dan selalu ditandai estimasi. Model tanpa harga ditampilkan tidak diketahui.
+- **Biaya.** Nilai dari provider dipakai bila dilaporkan. Selain itu dihitung dari tabel harga berupa data registri yang bertanggal dan bisa diedit, dan selalu ditandai estimasi. `src/effective-cost.ts` berisi bobot akuntansi yang belum diverifikasi, bukan harga, jadi tidak dipakai sebagai tabel harga. Model tanpa harga ditampilkan tidak diketahui.
 - **Kuota.** `observeProviderResponse` hanya membaca `retry-after`, `x-ratelimit-*`, dan batas permintaan; header `anthropic-ratelimit-*` belum dibaca. Fase 6 menambah parser Anthropic dan sumber kuota per provider sebagai data registri. Provider tanpa sumber memakai batas yang diisi pengguna, dan ditandai demikian.
 - **Notifikasi di halaman UI.** Launcher belum punya tray atau toast, jadi toast Windows adalah pekerjaan baru dan tidak masuk rencana ini kecuali user memintanya.
 
@@ -71,12 +81,12 @@ Fase berikutnya dikirim setelah fase sebelumnya diverifikasi supervisor dari fil
 | # | Fase | Isi | Selesai bila | Pemegang | Status |
 |---|---|---|---|---|---|
 | 0 | Prasyarat | Tombol lepas kredensial, build launcher, ukur probe di Core berjalan | Tombol terbukti di launcher; `/health` terukur | Haiku, supervisor | Berjalan |
-| 1 | Mesin routing | Proses `src/router/`, `/router/v1/chat/completions`, `/router/v1/messages`, `/router/v1/models`, proxy dan SSE, kunci klien, failover antar-kunci, registri provider sebagai data | Body di provider identik kecuali transformasi tertulis; klien menerima event pertama sebelum provider selesai; tanpa kunci klien ditolak; lintas dialek ditolak; `Host` asing ditolak; putus di tengah stream tidak tercatat sukses; restart Core tidak memutus stream | Fable, registri oleh Haiku | Belum |
-| 2 | Vault | Vault AES-256-GCM, master key DPAPI lewat launcher, impor `.env`, pengisian slot di `loadConfig` | Native dan router jalan dari vault; file vault tidak memuat nilai kunci; vault rusak dilaporkan dan `.env` tetap jalan; kunci yang dihapus tidak terimpor lagi | Fable | Belum |
-| 3 | Setup provider dan test | Tab Providers di halaman Router, tombol test per provider, daftar model penuh per kunci, pilih model | Test menampilkan model nyata, termasuk daftar Anthropic penuh yang kini hanya cek satu model; kegagalan menjelaskan penyebab tanpa membocorkan kunci | Sonnet | Belum |
-| 4 | Riwayat permintaan | Penyimpanan metadata, token dan cache per permintaan dari salinan stream, retensi, ekspor CSV dan JSON, pemantauan langsung | Angka token sama dengan laporan provider; ekspor aman dari formula injection; tidak ada isi prompt atau kunci | Sonnet | Belum |
-| 5 | Caching | Prompt caching 1 jam per klien, cache respons opsional | Tes menunjukkan token cache-read pada permintaan kedua; hit cache respons terbukti saat aktif, ditandai, dan terpisah per klien | Fable | Belum |
-| 6 | Analitik, kuota, biaya | Grafik interaktif harian, mingguan, bulanan; persentase prompt caching; parser header Anthropic; tabel harga; notifikasi mendekati batas | Grafik memakai data riwayat nyata; sumber kuota dan biaya tertulis per provider; notifikasi muncul sekali per ambang; bisa dipakai keyboard | Sonnet | Belum |
+| 1 | Vault dan auto-setup | Vault AES-256-GCM di `secrets`, master key DPAPI lewat launcher, impor `.env`, pengisian slot di `loadConfig`, status vault di UI | Native berjalan dari vault; file vault tidak memuat nilai kunci; vault rusak dilaporkan dan `.env` tetap jalan; kunci yang dihapus tidak terimpor lagi | Fable | Belum |
+| 2 | Setup provider dan test | Halaman Router: daftar provider dari registri, tombol test per provider, daftar model penuh per kunci, pilih model lewat pilihan yang ada | Test menampilkan model nyata, termasuk daftar Anthropic penuh yang kini hanya cek satu model; kegagalan menjelaskan penyebab tanpa membocorkan kunci | Sonnet, registri oleh Haiku | Belum |
+| 3 | Riwayat permintaan | Catatan per panggilan di pool: token dan cache dari laporan provider, retensi, ekspor CSV dan JSON, pemantauan langsung | Angka token sama dengan laporan provider; ekspor aman dari formula injection; tidak ada isi prompt atau kunci; panggilan gagal ikut tercatat | Sonnet | Belum |
+| 4 | Prompt caching | Pilihan TTL 1 jam di pool, cache-read dan cache-write terpisah di riwayat | Tes menunjukkan token cache-read pada permintaan kedua; harga dan sintaks dicek ke dokumentasi | Fable | Belum |
+| 5 | Analitik, kuota, biaya | Grafik interaktif harian, mingguan, bulanan; persentase prompt caching; parser header Anthropic; tabel harga; notifikasi mendekati batas | Grafik memakai data riwayat nyata; sumber kuota dan biaya tertulis per provider; notifikasi muncul sekali per ambang; bisa dipakai keyboard | Sonnet | Belum |
+| 6 | API lokal | Proses `src/router/`, `/router/v1/chat/completions`, `/router/v1/messages`, `/router/v1/models`, proxy dan SSE, kunci klien, failover antar-kunci, cache respons opsional | Body di provider identik kecuali transformasi tertulis; klien menerima event pertama sebelum provider selesai; tanpa kunci klien ditolak; lintas dialek ditolak; `Host` asing ditolak; putus di tengah stream tidak tercatat sukses; restart Core tidak memutus stream; hit cache respons terbukti saat aktif, ditandai, dan terpisah per klien | Fable | Belum |
 | 7 | Admin dan OAuth | Kelola klien router, pencabutan, batas per klien, scope `router:*` di `src/oauth/` | Klien yang dicabut langsung ditolak; token berscope router tidak bisa memanggil tool MCP | Fable | Belum |
 | 8 | Cutover klien | Klien nyata dialihkan, konfigurasi router lama dibersihkan | Definisi selesai terbukti; rollback tertulis | Supervisor | Belum |
 
@@ -84,7 +94,7 @@ Haiku memegang tugas sempit di tiap fase: registri provider (satu pemilik, Fable
 
 ## Yang sengaja tidak dibangun
 
-Multi-akun manusia, jalur masuk publik, OAuth langganan provider, penerjemah lintas dialek, toast Windows, fusion dan smart routing, serta adapter yang menyamar sebagai aplikasi lain. Combo fallback pilihan pengguna ditinjau sesudah fase 3.
+Multi-akun manusia, jalur masuk publik, OAuth langganan provider, penerjemah lintas dialek, toast Windows, fusion dan smart routing, serta adapter yang menyamar sebagai aplikasi lain. Combo fallback pilihan pengguna ditinjau sesudah fase 6.
 
 ## Langkah manual user
 
@@ -92,13 +102,13 @@ Tidak ada untuk fase 1 sampai 7 bila kunci sudah ada di `.env`. Menghapus kunci 
 
 ## Belum terbukti, diperiksa di fase pemiliknya
 
-- Fase 1: apakah `PersistentCredentialScheduler` aman dipakai dua proses pada `provider-state.sqlite` tanpa status yang hanya ada di memori. Mode WAL dan `BEGIN IMMEDIATE` sudah ada, tetapi itu belum membuktikannya. Bila tidak aman, router memakai file state sendiri.
-- Fase 1: apakah `FileKeyStore` melihat pencabutan lintas proses tanpa cache basi.
-- Fase 3: bentuk `GET /v1/models` Anthropic. Fase 5: sintaks TTL 1 jam.
+- Fase 6: apakah `PersistentCredentialScheduler` aman dipakai dua proses pada `provider-state.sqlite` tanpa status yang hanya ada di memori. Mode WAL dan `BEGIN IMMEDIATE` sudah ada, tetapi itu belum membuktikannya. Bila tidak aman, router memakai file state sendiri.
+- Fase 6: apakah `FileKeyStore` melihat pencabutan lintas proses tanpa cache basi.
+- Fase 2: bentuk `GET /v1/models` Anthropic. Fase 4: sintaks TTL 1 jam.
 
 ## Risiko
 
-- `src/http/app.ts` tidak disentuh untuk jalur router karena router punya listener sendiri. `src/config.ts` dan launcher adalah titik sambung, jadi perubahannya dijaga sekecil mungkin.
+- `src/agent-provider.ts` dipakai semua panggilan Native, jadi pencatatan riwayat di fase 3 tidak boleh menggagalkan panggilan bila penulisan log gagal. Proxy di fase 6 punya listener sendiri dan tidak menyentuh `src/http/app.ts`. `src/config.ts` dan launcher adalah titik sambung, jadi perubahannya dijaga sekecil mungkin.
 - Dua proses berarti dua versi bisa berjalan bersamaan sesudah promosi; versi router harus terlihat di UI.
 - DPAPI hanya Windows. Fase lintas platform di luar lingkup; vault berstatus tidak tersedia bila master key tidak terbuka.
 - Biaya model bisa berjalan selama pengujian: tes otomatis memakai server tiruan, dan tes nyata dibatasi.
