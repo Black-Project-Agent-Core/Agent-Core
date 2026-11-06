@@ -26,6 +26,7 @@ export const systemIcons: Record<SystemId, LucideIcon> = {
   'external-learning': ListChecks,
   'web-research': Search,
   'mutation-safety': ShieldCheck,
+  'credential-vault': KeyRound,
   partner: Link2,
   phone: Smartphone,
   game: Gamepad2,

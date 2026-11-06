@@ -20,6 +20,7 @@ export type DesktopHealthSnapshot = {
   externalControllerLearning?: {status:string;mode?:string;episodeCount?:number|null;pendingLearningEpisodes?:number|null;procedureCount?:number|null;readyProcedureCount?:number|null;semanticAuthority?:string;issue?:string}|null;
   webResearch?: {status:string;searchConfigured?:boolean|null;readerConfigured?:boolean|null;nativeReaderAvailable?:boolean|null;externalReaderConfigured?:boolean|null;searchProviders?:string[]|null;openProviders?:string[]|null;issue?:string}|null;
   mcpMutationSafety?: {status:string;issueCount?:number|null;issue?:string;draining?:boolean|null;activeMutations?:number|null;journalEntries?:number|null}|null;
+  credentialVault?: {status:string;entryCount?:number|null;importedCount?:number|null;deletedCount?:number|null;providers?:Record<string,number>|null;issueCount?:number|null;issue?:string}|null;
   memory: {
     status: string;
     canonicalStore?: string;

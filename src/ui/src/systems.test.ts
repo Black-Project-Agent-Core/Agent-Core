@@ -5,7 +5,7 @@ import type { DesktopSnapshot } from './host';
 import { buildSystems, systemCounts } from './systems';
 import { SystemCard } from './components';
 
-const addedIds = ['skills', 'external-learning', 'web-research', 'mutation-safety'];
+const addedIds = ['skills', 'external-learning', 'web-research', 'mutation-safety', 'credential-vault'];
 
 function snapshot(health: Record<string, unknown> = {}): DesktopSnapshot {
   return {
@@ -51,7 +51,19 @@ describe('dashboard owner health projection', () => {
       expect(system.meta.some(([, value]) => value === '0')).toBe(false);
       expect(system.meta.some(([, value]) => value === 'Unknown')).toBe(true);
     }
-    expect(systemCounts(systems).unknown).toBe(6);
+    expect(systemCounts(systems).unknown).toBe(7);
+  });
+
+  it('shows the credential vault by state and never a key value', () => {
+    const active = buildSystems(snapshot({ credentialVault: { status: 'active', entryCount: 3, importedCount: 1, deletedCount: 0, providers: { anthropic: 2, openrouter: 1 }, issueCount: 0 } })).find(item => item.id === 'credential-vault');
+    expect(active).toMatchObject({ tone: 'healthy', label: 'Healthy' });
+    expect(active?.meta).toEqual(expect.arrayContaining([['Keys', '3'], ['Imported at start', '1'], ['Providers', 'anthropic 2, openrouter 1'], ['Source', '/health.credentialVault']]));
+
+    const locked = buildSystems(snapshot({ credentialVault: { status: 'locked', entryCount: 0, issueCount: 1, issue: 'VAULT_KEY_LOCKED' } })).find(item => item.id === 'credential-vault');
+    expect(locked).toMatchObject({ tone: 'error', label: 'Locked', issue: 'VAULT_KEY_LOCKED' });
+
+    const sourceOnly = buildSystems(snapshot({ credentialVault: { status: 'unavailable', entryCount: 0, issueCount: 0, issue: 'VAULT_HELPER_MISSING' } })).find(item => item.id === 'credential-vault');
+    expect(sourceOnly).toMatchObject({ tone: 'offline', label: '.env only' });
   });
 
   it('does not invent missing metrics from an available but partial section', () => {

@@ -7,6 +7,7 @@ internal static class Program
     {
         if (BrowserUseNativeHost.TryRunHelperMode(args)) return;
         if (NativeDumpDiagnostics.TryRunHelperMode(args)) return;
+        if (DpapiHelper.TryRunHelperMode(args)) return;
 
         // Own the single-instance boundary before any WinForms initialization can hang.
         // Helper mode is intentionally exempt because it is a launcher-owned child role.

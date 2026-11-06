@@ -35,6 +35,11 @@ export function buildSystems(snapshot?: DesktopSnapshot): SystemView[] {
   const mutationSafety = h.mcpMutationSafety;
   const mutationOwnerTone = normalizeTone(mutationSafety?.status, mutationSafety?.issueCount ?? 0);
   const mutationTone = mutationSafety?.draining && mutationOwnerTone === 'healthy' ? 'warning' : mutationOwnerTone;
+  const vault = h.credentialVault;
+  // 'unavailable' means no DPAPI helper beside Core (a Source checkout): .env is in force, which is not an error.
+  const vaultTone = !vault ? 'unknown' : vault.status === 'active' ? (vault.issueCount ? 'degraded' : 'healthy')
+    : vault.status === 'unavailable' ? (vault.issueCount ? 'error' : 'offline') : 'error';
+  const vaultProviders = vault?.providers ? Object.entries(vault.providers).map(([id, count]) => `${id} ${count}`).join(', ') || 'None' : 'Unknown';
 
   const systems: SystemView[] = [
     {
@@ -116,6 +121,12 @@ export function buildSystems(snapshot?: DesktopSnapshot): SystemView[] {
       label:mutationSafety?.draining && mutationTone === 'warning' ? 'Draining' : labelForTone(mutationTone), category:'Security',
       meta:[['Active mutations',observed(mutationSafety?.activeMutations)], ['Journal entries',observed(mutationSafety?.journalEntries)], ['Draining',yesNo(mutationSafety?.draining)], ['Issues',observed(mutationSafety?.issueCount)], ['Status',observed(mutationSafety?.status)], ['Source','/health.mcpMutationSafety']],
       issue:mutationSafety?.issue,
+    },
+    {
+      id:'credential-vault', name:'Credential Vault', description:'Encrypted provider keys under secrets/, DPAPI master key', tone:vaultTone,
+      label:vault?.status === 'locked' ? 'Locked' : vault?.status === 'corrupt' ? 'Corrupt' : vault?.status === 'unavailable' && !vault.issueCount ? '.env only' : labelForTone(vaultTone), category:'Security',
+      meta:[['Status',observed(vault?.status)], ['Keys',observed(vault?.entryCount)], ['Imported at start',observed(vault?.importedCount)], ['Removed',observed(vault?.deletedCount)], ['Providers',vaultProviders], ['Source','/health.credentialVault']],
+      issue:vault?.issue,
     },
     {
       id:'integrations', name:'Integrations', description:'OAuth, API keys and external services', tone:'unknown',

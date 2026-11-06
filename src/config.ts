@@ -8,6 +8,7 @@ import type { LearningConfig } from './learning/types.js';
 import type { SemanticIdeConfig } from './semantic-ide/types.js';
 import { loadPhoneConfig, type PhoneConfig } from './phone/config.js';
 import { recordNewRootEnvSecrets } from './security/environment.js';
+import { applyCredentialVault, launcherMasterKeyProtector } from './security/credential-vault.js';
 import { resolveModuleProjectRoot, resolvePortableProjectPath, resolveProjectRoot } from './portability/paths.js';
 
 export type McpProtocolMode = 'dual' | 'legacy';
@@ -121,6 +122,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
     recordNewRootEnvSecrets(beforeKeys, process.env);
     env = process.env;
     projectRoot = resolveProjectRoot(env, projectRoot);
+    // .env is only the import source for the numbered provider keys; the vault fills the slots numberedCredentials reads.
+    // The DPAPI helper is the launcher beside this build's own root, never one chosen through AGENT_CORE_PROJECT_ROOT.
+    applyCredentialVault(env, { dir: path.join(projectRoot, 'secrets'), protector: launcherMasterKeyProtector() });
   }
   const port = Number.parseInt(env.AGENT_CORE_PORT ?? '8765', 10);
   if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('AGENT_CORE_PORT_INVALID');
