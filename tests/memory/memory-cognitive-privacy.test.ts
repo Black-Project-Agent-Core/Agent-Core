@@ -92,7 +92,8 @@ describe('secret masking in MemoryService', () => {
 
   it('still rejects credential-shaped text that masking does not recognize', async () => {
     const { service } = await fixtures.service({ features: { secretMasking: true } });
-    await expect(service.remember({ content: 'passphrase: correct-horse-battery-staple' }))
+    // A reference masking deliberately keeps (not a value) that the backstop still rejects.
+    await expect(service.remember({ content: 'api_key = process.env.PROVIDER_API_KEY' }))
       .rejects.toThrow(/MEMORY_SAFETY_REJECTED/);
   });
 });

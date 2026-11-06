@@ -178,7 +178,17 @@ async function runContextSearch(
     // The working tree is searched only when it is at the requested ref.
     if (context.ref) await service.assertRequestedRef({ ...resolved, ref: context.ref });
     const root = resolved.worktreePath ?? resolved.cwd;
-    assertSearchRoot(root, resolved.cwd);
+    // A requested worktree becomes the resolved cwd, so the repository root is resolved again without it, in the
+    // workspace the first lookup found: a worktree may belong to a workspace other than the default one.
+    const repoRoot = resolved.worktreePath
+      ? (await service.resolveWorkspace({
+        ...context,
+        workspace: resolved.workspace,
+        worktreePath: undefined,
+        repoFilter: resolved.repo ? [resolved.repo] : context.repoFilter,
+      })).cwd
+      : resolved.cwd;
+    await assertSearchRoot(root, repoRoot);
     const payload = await searchCodeContext({ root, query, ...(limit !== undefined ? { limit } : {}) });
     result = textResult(payload);
     recordSafely(() => activityTracker.record(
