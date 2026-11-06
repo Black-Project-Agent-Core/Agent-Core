@@ -103,23 +103,54 @@ function candidateTrigger(candidate: LearningCandidate): {
   };
 }
 
+/** A status poll reuses a Grafel answer this young without asking again. */
+const SINK_HEALTH_CACHE_MS = 5_000;
+/** Older than this, no answer is better than a stale one: the status poll reports "not observed" instead. */
+const SINK_HEALTH_MAX_AGE_MS = 60_000;
+
+function sinkHealthOf(health: { status: string; index: string; issue?: string }): LearningSinkHealth {
+  const available = health.status === 'available' && health.index === 'current';
+  return { available, ...(available ? {} : { issue: health.issue ?? `Grafel index is ${health.index}` }) };
+}
+
 export class CodePatternLearningSink implements LearningSink {
   readonly name = 'grafel-patterns';
+  private observed?: { value: LearningSinkHealth; at: number };
+  private refreshing?: Promise<void>;
 
   constructor(private readonly code?: CodeIntelligenceService) {}
 
+  /** Write path: always asks Grafel (forced), and remembers the answer for the status poll. */
   async isAvailable(): Promise<boolean> {
     if (!this.code?.enabled || !this.code.capabilities().patterns) return false;
     const health = await this.code.health(true);
+    this.observed = { value: sinkHealthOf(health), at: Date.now() };
     return health.status === 'available' && health.index === 'current';
   }
 
+  /**
+   * Status poll (/health): never waits on Grafel. It answers from the last observed result and refreshes in the
+   * background through Code Intelligence's own cached, single-flight health. Before the first result (or when the
+   * last one is too old) it says so instead of guessing.
+   */
   async health(): Promise<LearningSinkHealth> {
     if (!this.code?.enabled) return { available: false, issue: 'Code Intelligence unavailable' };
     if (!this.code.capabilities().patterns) return { available: false, issue: 'Grafel patterns capability unavailable' };
-    const health = await this.code.health(true);
-    const available = health.status === 'available' && health.index === 'current';
-    return { available, ...(available ? {} : { issue: health.issue ?? `Grafel index is ${health.index}` }) };
+    const age = this.observed ? Date.now() - this.observed.at : Infinity;
+    if (age >= SINK_HEALTH_CACHE_MS) this.refresh();
+    return this.observed && age < SINK_HEALTH_MAX_AGE_MS
+      ? this.observed.value
+      : { available: false, issue: 'Grafel health has not been observed yet' };
+  }
+
+  private refresh(): void {
+    if (this.refreshing) return;
+    this.refreshing = this.code!.health().then(
+      health => { this.observed = { value: sinkHealthOf(health), at: Date.now() }; },
+      error => {
+        this.observed = { value: { available: false, issue: error instanceof Error ? error.message : String(error) }, at: Date.now() };
+      },
+    ).finally(() => { this.refreshing = undefined; });
   }
 
   classifySupport(candidate: LearningCandidate): boolean {
