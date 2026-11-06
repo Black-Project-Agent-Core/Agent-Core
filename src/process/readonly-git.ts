@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { buildMachineShellEnv } from '../security/environment.js';
 
 /**
  * Argv for a read-only git call: no optional locks, no fsmonitor daemon, no stat-only index refresh (a plain
@@ -20,7 +21,7 @@ export function readOnlyGitArgs(root: string, args: string[]): string[] {
 
 /** Stable locale and no credential prompt for every read-only git call. */
 export function readOnlyGitEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
-  return { ...process.env, LC_ALL: 'C', GIT_TERMINAL_PROMPT: '0', ...extra };
+  return buildMachineShellEnv({ LC_ALL: 'C', GIT_TERMINAL_PROMPT: '0', ...extra }, { ...process.env });
 }
 
 export async function readOnlyGit(

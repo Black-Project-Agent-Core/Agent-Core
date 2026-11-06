@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import type { PhoneAdbConfig, PhoneDisplayConfig } from './config.js';
 import { encodeScreenshot } from './image.js';
+import { buildMachineShellEnv } from '../security/environment.js';
 import type { NamedActionStore } from './named-actions.js';
 import type {
   ForegroundApp,
@@ -50,7 +51,7 @@ export class AdbTransport implements PhoneTransport {
         this.config.binaryPath,
         args,
         { encoding: binary ? 'buffer' : 'utf8', maxBuffer: SCREENCAP_MAX_BUFFER, windowsHide: true, timeout: timeoutMs,
-          env: this.config.homeDir ? { ...process.env, ANDROID_USER_HOME: this.config.homeDir } : process.env }, 
+          env: buildMachineShellEnv(this.config.homeDir ? { ANDROID_USER_HOME: this.config.homeDir } : {}, { ...process.env }) }, 
         (error, stdout, stderr) => {
           if (error) {
             const detail = (typeof stderr === 'string' ? stderr : stderr?.toString('utf8')) || error.message;
