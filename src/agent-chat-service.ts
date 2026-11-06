@@ -496,6 +496,12 @@ export class AgentChatService {
     }));
   }
 
+  /** Owner's release of one listed route's locked credentials. Returns the count only, never ids or keys. */
+  resetProviderCredentials(providerId: string): number {
+    if (!this.listProviders().some(route => route.id === providerId)) throw new Error('AGENT_CHAT_PROVIDER_UNKNOWN');
+    return this.runtime.resetProviderCredentials(providerId);
+  }
+
   /** The owner's last provider/model/effort, persisted in chat.sqlite so it survives Core restarts. */
   getLastSelection() { return this.store.getLastSelection(); }
 

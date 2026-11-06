@@ -706,6 +706,11 @@ export class AgentRuntimeService {
     return this.provider.health();
   }
 
+  /** Owner's release of a locked route's credentials; returns only how many were reset. */
+  resetProviderCredentials(providerId: string): number {
+    return this.provider.resetRouteCredentials(providerId);
+  }
+
   refreshModelCapabilities(): Promise<void> {
     return this.provider.refreshModelCapabilities();
   }

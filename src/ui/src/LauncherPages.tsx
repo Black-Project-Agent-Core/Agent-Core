@@ -15,25 +15,33 @@ type Props = {
   /** Skills page: turns one skill on or off for Native / asks the host for the skill list again. */
   onSkillSet?: (name: string, enabled: boolean) => void;
   onSkillsReload?: () => void;
+  /** AI Models page: releases the locked credentials of one provider route (the host answers with the list again). */
+  onProviderReset?: (providerId: string) => void;
 };
 
 export function ModelsPage(props: Props) {
   const providers = props.agentChat.providers;
   const busy = Boolean(props.agentChat.runningRequestId)
     || props.agentChat.active?.turns.some(turn => turn.status === 'running' || turn.status === 'resumable');
+  const reset = props.agentChat.providerReset;
   return <div className="prototype-page launcher-data-page">
     <PrototypeHeader title="AI Model & Inference Management" badge="Multi-Provider" description="Choose a session model from providers configured in Agent Core."><UpgradeControl reason="Provider and credential editing has no desktop write contract."><Plus size={14}/>Add Provider</UpgradeControl></PrototypeHeader>
     {!providers && <Panel><p role="status">Waiting for provider information from the desktop host.</p></Panel>}
     {providers?.length === 0 && <Panel><p>No providers are configured.</p></Panel>}
     <div className="launcher-provider-grid">{providers?.flatMap(provider => {
       const models = provider.models?.length ? provider.models : [{ id: provider.model || 'Model unavailable' }];
-      return models.map(model => <PrototypeCard key={provider.id+model.id} className="launcher-provider-card">
+      const resetHere = reset?.providerId === provider.id ? reset : undefined;
+      return models.map((model, index) => <PrototypeCard key={provider.id+model.id} className="launcher-provider-card">
         <div className="launcher-card-title"><Boxes size={20}/><h2>{model.id}</h2><StatusBadge
           tone={!provider.configured ? 'offline' : provider.available ? 'healthy' : 'warning'}
           label={!provider.configured ? 'Not configured' : provider.available ? 'Available' : 'Waiting'}/></div>
         <p>Provider: {provider.id}</p>
         {provider.issue && <p>{provider.issue}</p>}
         {provider.retryAt && <small>Eligible after {new Date(provider.retryAt).toLocaleString()}</small>}
+        {index === 0 && provider.configured && !provider.available && props.onProviderReset && <div className="launcher-provider-reset">
+          <TinyButton disabled={Boolean(resetHere?.busy)} onClick={() => props.onProviderReset?.(provider.id)}>Release credentials</TinyButton>
+          {resetHere?.error && <p role="alert">Credentials could not be released. Try again.</p>}
+        </div>}
         <dl className="prototype-model-facts"><dt>Context Window</dt><dd>Not reported</dd><dt>Reasoning Support</dt><dd>{provider.id === 'anthropic' ? (provider.models?.find(item => item.id === model.id)?.reasoningEfforts ?? provider.reasoningEfforts ?? []).join(' · ') || 'Automatic' : 'Provider default'}</dd><dt>Provider Configuration</dt><dd>{provider.configured?'Configured':'Needs setup'}</dd><dt>Estimated Pricing</dt><dd>Not reported</dd></dl>
         <div className="prototype-model-footer"><span><Lock size={12}/>Credentials stay in the host</span><UpgradeControl reason="No inference-test command is available in the desktop bridge.">Test Inference</UpgradeControl>
           <TinyButton kind="primary" disabled={busy || !provider.configured || !provider.model || !props.onChatProvider || (Boolean(provider.models?.length) && !props.onChatModel)}

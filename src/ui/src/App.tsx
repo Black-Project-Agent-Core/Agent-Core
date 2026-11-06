@@ -212,6 +212,13 @@ export default function App() {
         setAgentChat(prev=>({...prev,stepDetails:reduceStepDetail(prev.stepDetails,{type:'error',turnId:key.slice(0,at),seq:Number(key.slice(at+1)),error:message.error})}));
         return;
       }
+      if(message.type==='agent-chat-provider-reset-result'){
+        // Busy ends either way; a failure keeps its fixed code so the route's card can show it.
+        setAgentChat(prev=>({...prev,providerReset:message.ok
+          ?{providerId:message.providerId,busy:false}
+          :{providerId:message.providerId,busy:false,error:message.error||'AGENT_CHAT_PROVIDER_RESET_FAILED'}}));
+        return;
+      }
       if(message.type==='agent-chat-error'){
         const createFailed=Boolean(creatingRequestIdRef.current&&message.requestId===creatingRequestIdRef.current);
         if(createFailed){creatingRequestIdRef.current=undefined;desiredChatIdRef.current=null;}
@@ -400,6 +407,12 @@ export default function App() {
     postHost({type:run?'agent-dreaming-run':'agent-dreaming-status'});
   };
 
+  // Releases a locked route's credentials on the host; busy until its answer (agent-chat-provider-reset-result), then the host sends the list again.
+  const onProviderReset=(providerId:string)=>{
+    if(agentChat.providerReset?.busy)return;
+    setAgentChat(prev=>({...prev,providerReset:{providerId,busy:true}}));
+    postHost({type:'agent-chat-provider-reset',providerId});
+  };
   // Switches one skill on/off for Native: optimistic value and pending until the host answers (agent-skill-set-result).
   const onSkillSet=(name:string,enabled:boolean)=>{
     const skills=agentChat.skills;
@@ -486,6 +499,7 @@ export default function App() {
     onChatReasoning={onChatReasoning}
     onSkillSet={onSkillSet}
     onSkillsReload={requestSkills}
+    onProviderReset={onProviderReset}
     onChatDraft={onChatDraft}
   />;
 }

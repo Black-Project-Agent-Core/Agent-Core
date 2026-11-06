@@ -574,6 +574,33 @@ public sealed class MainForm : Form
                 }
                 return;
             }
+            if (type == "agent-chat-provider-reset")
+            {
+                var resetProviderId = root.TryGetProperty("providerId", out var resetIdNode)
+                    && resetIdNode.ValueKind == JsonValueKind.String ? resetIdNode.GetString() ?? string.Empty : string.Empty;
+                try
+                {
+                    await _runtime.ResetAgentProviderCredentialsAsync(resetProviderId);
+                    Send(new { type = "agent-chat-provider-reset-result", providerId = resetProviderId, ok = true });
+                }
+                catch (Exception)
+                {
+                    // Fixed code only: the exception text may carry a route address or a credential detail.
+                    Send(new { type = "agent-chat-provider-reset-result", providerId = resetProviderId, ok = false, error = "AGENT_CHAT_PROVIDER_RESET_FAILED" });
+                    return;
+                }
+                // Reload the list so the cards show the released state, as agent-chat-providers does.
+                try
+                {
+                    var providersAfterReset = await _runtime.ListAgentProvidersAsync();
+                    Send(new { type = "agent-chat-providers-result", result = providersAfterReset });
+                }
+                catch (Exception)
+                {
+                    Send(new { type = "agent-chat-error", error = "AGENT_CHAT_PROVIDERS_UNAVAILABLE" });
+                }
+                return;
+            }
             if (type == "agent-chat-step")
             {
                 var requestId = root.TryGetProperty("requestId", out var stepRequestNode)

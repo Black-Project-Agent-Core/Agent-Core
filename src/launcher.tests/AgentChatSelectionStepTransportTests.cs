@@ -56,6 +56,18 @@ public sealed class AgentChatSelectionStepTransportTests
         Assert.Equal("out", result.GetProperty("outputText").GetString());
     }
 
+    [Fact]
+    public async Task ResetAgentProviderCredentialsPostsEscapedRouteWithUiTokenAndReturnsCount()
+    {
+        var capture = new Capture("{\"providerId\":\"atria\",\"released\":2}");
+        var result = await WithRuntime(capture, runtime => runtime.ResetAgentProviderCredentialsAsync("atria/x y"));
+        Assert.Equal(HttpMethod.Post, capture.Method);
+        Assert.Equal("/agent/chat/providers/atria%2Fx%20y/reset", capture.RawPath);
+        Assert.True(capture.HasUiToken);
+        Assert.False(capture.HasExternalControllerOrigin);
+        Assert.Equal(2, result.GetProperty("released").GetInt32());
+    }
+
     private static async Task<JsonElement> WithRuntime(Capture capture, Func<AgentCoreRuntime, Task<JsonElement>> action)
     {
         var root = Path.Combine(AppContext.BaseDirectory, "agent-core-selstep-" + Guid.NewGuid().ToString("N"));

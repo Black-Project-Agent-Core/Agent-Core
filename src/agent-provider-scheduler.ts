@@ -182,6 +182,10 @@ export class PersistentCredentialScheduler {
     return this.state.resetCredential(providerId, credentialId, now);
   }
 
+  releaseLocks(providerId: string, credentialIds: string[], now = Date.now()): number {
+    return this.state.releaseRouteLocks(providerId, credentialIds, now);
+  }
+
   issue(): string | null {
     return this.state.healthIssue();
   }

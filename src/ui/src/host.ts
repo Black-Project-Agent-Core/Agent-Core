@@ -371,6 +371,8 @@ export type AgentChatUiState = {
   error?: string;
   /** Skills page state. */
   skills?: { items: NativeSkillInfo[]; state: 'idle'|'loading'|'ready'|'error'; error?: string; pending: Record<string,boolean> };
+  /** Last "Release credentials" action: busy until the host answers; error is a fixed code, never a credential detail. */
+  providerReset?: { providerId: string; busy: boolean; error?: string };
 };
 
 export type AgentChatActivity = {
@@ -559,6 +561,7 @@ type HostEnvelope =
   | { type: 'agent-result'; requestId: string; result?: AgentRunResult; error?: string }
   | { type: 'agent-chat-list-result'; result: { conversations?: AgentChatConversation[] } }
   | { type: 'agent-chat-providers-result'; result: { providers?: AgentChatProvider[]; verifiedModels?: VerifiedModel[]; /** Server-side last-used {providerId, model, reasoningEffort, updatedAtMs}. */ selection?: unknown } }
+  | { type: 'agent-chat-provider-reset-result'; providerId: string; ok: boolean; error?: string }
   | { type: 'agent-chat-state'; requestId?: string; result: AgentChatDetail }
   | { type: 'agent-chat-event'; requestId: string; conversationId?: string; envelope: { type: string; event?: AgentChatEvent; result?: unknown; error?: string } }
   | { type: 'agent-chat-step-result'; requestId: string; turnId: string; seq: number; result: StepDetailResult }
