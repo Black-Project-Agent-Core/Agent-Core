@@ -12,7 +12,7 @@ Mesin lokal hanya mengerjakan yang memang harus di sini: menjalankan Core, memeg
 - Memori terbesar: `claude` 3,5 GB (15 proses), `msedgewebview2` 1,2 GB, `node` 1,0 GB, `grafel` 0,5 GB. Yang pertama mencakup app Desktop dan semua sesi, belum dipisah per sesi.
 - CPU pada sampel 5 detik saat tiga pekerja berjalan: `cmd` 18,9%, `claude` 14,3%, `grafel` 9,1%, `node` 8%. Satu sampel ini bukan rata-rata. Penyebab `cmd` setinggi itu belum diketahui.
 - Kesimpulan sementara: beban utama adalah sesi agen dan proses pendukungnya, bukan hanya tes. Memindahkan tes saja tidak akan cukup.
-- Repo `Black-Project-Agent-Core/Agent-Core` bersifat publik dan belum punya `.github/workflows`.
+- Repo `Black-Project-Agent-Core/Agent-Core` bersifat publik, milik organisasi paket Free, dan belum punya `.github/workflows` di branch kerja. GitHub Actions saat ini nonaktif di pengaturan repo, jadi langkah 2 harus mengaktifkannya dulu.
 - 38 dari 286 berkas di `tests` memuat kata kunci khusus Windows, dan `src/launcher.tests` berisi tes C#. Sisanya kandidat lintas platform, tetapi belum pernah dicoba di luar Windows.
 - `CLAUDE.md` repo sudah mengatur kerja dari sesi cloud: edit dan push branch di cloud, penerimaan di PC pemilik.
 
