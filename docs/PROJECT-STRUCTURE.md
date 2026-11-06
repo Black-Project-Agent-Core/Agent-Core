@@ -206,6 +206,10 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
       "path": ".claude"
     },
     {
+      "purpose": "codex-project-local-settings",
+      "path": ".codex"
+    },
+    {
       "purpose": "impeccable-plugin-local-cache",
       "path": ".impeccable"
     },
@@ -396,6 +400,11 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
       "owner": "docs"
     },
     {
+      "path": "docs/research/hermes-parity",
+      "purpose": "hermes-parity-inventory-evidence",
+      "owner": "docs"
+    },
+    {
       "path": ".changeset/applied",
       "purpose": "applied-release-intent-archive",
       "owner": ".changeset"
@@ -466,7 +475,7 @@ Contoh intent untuk tujuan baru yang benar-benar diperlukan task: `{"path":"docs
 
 <!-- DIRECTORY-SNAPSHOT:START -->
 
-Daftar otomatis: **407 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. State instalasi hidup (`dist`, `.grafel`, `.rdc-standalone`, state di `runtime/*`) tidak dicantumkan agar daftar sama di Source dan Platform. Jangan edit blok ini; gunakan `npm run structure:sync`.
+Daftar otomatis: **282 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. State instalasi hidup (`dist`, `.grafel`, `.rdc-standalone`, state di `runtime/*`) tidak dicantumkan agar daftar sama di Source dan Platform. Jangan edit blok ini; gunakan `npm run structure:sync`.
 
 ```text
 <PROJECT_ROOT>/
@@ -504,6 +513,7 @@ Daftar otomatis: **407 direktori/boundary**. Subtree privat, dependency, generat
 |       |-- 1.5.9-1793172401547/
 |       `-- 1.6.0-1793176214037/
 |-- .claude/  [izin lokal Claude Code (settings.local.json); tidak ditelusuri]
+|-- .codex/
 |-- .git/  [metadata Git; tidak ditelusuri]
 |-- .github/
 |   `-- ISSUE_TEMPLATE/
@@ -550,6 +560,7 @@ Daftar otomatis: **407 direktori/boundary**. Subtree privat, dependency, generat
 |   |   |-- always-on-budget-phase0/
 |   |   |-- claude-ecosystem-donor/
 |   |   |-- harness2-donor/
+|   |   |-- hermes-parity/
 |   |   |-- learning-state-closure-r8s0/
 |   |   `-- weknora-donor/
 |   |-- superpowers/
@@ -722,133 +733,6 @@ Daftar otomatis: **407 direktori/boundary**. Subtree privat, dependency, generat
 |   `-- workflows/
 |-- subagents/
 |-- SubProject/
-|   |-- Market-Signal-Lab/
-|   |   |-- .github/
-|   |   |   `-- workflows/
-|   |   |-- .vscode/
-|   |   |-- cmd/
-|   |   |   |-- analytics-bench/
-|   |   |   `-- market-signal-lab/
-|   |   |-- companion/
-|   |   |   `-- browser-extension/
-|   |   |       `-- extractors/
-|   |   |-- docs/
-|   |   |   |-- checkpoints/
-|   |   |   |-- market-intelligence/
-|   |   |   |-- plans/
-|   |   |   |-- project/
-|   |   |   |-- qa/
-|   |   |   |-- release-history/
-|   |   |   `-- specs/
-|   |   |-- engines/
-|   |   |   `-- rust/
-|   |   |       |-- src/
-|   |   |       `-- tests/
-|   |   |-- frontend/
-|   |   |   |-- src/
-|   |   |   `-- tests/
-|   |   |-- installer/
-|   |   |-- internal/
-|   |   |   |-- analytics/
-|   |   |   |-- analyticsengine/
-|   |   |   |   `-- testdata/
-|   |   |   |-- app/
-|   |   |   |-- autopilot/
-|   |   |   |-- connectors/
-|   |   |   |   `-- envato/
-|   |   |   |-- consensus/
-|   |   |   |-- credentials/
-|   |   |   |-- domain/
-|   |   |   |-- evidence/
-|   |   |   |-- i18n/
-|   |   |   |   `-- locales/
-|   |   |   |-- indexing/
-|   |   |   |   `-- testdata/
-|   |   |   |       `-- c1/
-|   |   |   |-- ingest/
-|   |   |   |-- insights/
-|   |   |   |-- quality/
-|   |   |   |-- ranking/
-|   |   |   |   `-- testdata/
-|   |   |   |       `-- c1/
-|   |   |   |-- repository/
-|   |   |   |-- sampling/
-|   |   |   |-- security/
-|   |   |   |-- segmentation/
-|   |   |   |-- semantics/
-|   |   |   |-- sources/
-|   |   |   |-- storage/
-|   |   |   |-- telemetry/
-|   |   |   |-- temporal/
-|   |   |   |-- universe/
-|   |   |   `-- web/
-|   |   |       |-- assets/
-|   |   |       |   |-- css/
-|   |   |       |   `-- js/
-|   |   |       `-- templates/
-|   |   |-- releases/
-|   |   |   `-- manifests/
-|   |   |-- scripts/
-|   |   |   `-- tests/
-|   |   |-- testdata/
-|   |   |   `-- analytics_v2/
-|   |   |       `-- c1/
-|   |   `-- tools/
-|   |       `-- calibration_lab/
-|   |           |-- testdata/
-|   |           `-- tests/
-|   |-- Presentation-Bridge/
-|   |   |-- corpus/
-|   |   |-- desktop/
-|   |   |-- docs/
-|   |   |-- runtime/  [runtime subproyek; tidak ditelusuri]
-|   |   |-- scripts/
-|   |   |-- secrets/  [terlindungi; tidak ditelusuri]
-|   |   |-- src/
-|   |   |   |-- application/
-|   |   |   |-- cli/
-|   |   |   |-- config/
-|   |   |   |-- converters/
-|   |   |   |   |-- google/
-|   |   |   |   `-- keynote/
-|   |   |   |-- fidelity/
-|   |   |   |   |-- scoring/
-|   |   |   |   |-- structural/
-|   |   |   |   `-- visual/
-|   |   |   |-- hosted/
-|   |   |   |-- jobs/
-|   |   |   |-- pptx/
-|   |   |   |   |-- ir/
-|   |   |   |   |-- ooxml/
-|   |   |   |   |-- opc/
-|   |   |   |   `-- preflight/
-|   |   |   |-- renderers/
-|   |   |   |-- repairs/
-|   |   |   |-- reports/
-|   |   |   |-- security/
-|   |   |   |-- types/
-|   |   |   `-- workers/
-|   |   |       `-- keynote/
-|   |   |           `-- assets/
-|   |   |-- tests/
-|   |   |   |-- acceptance/
-|   |   |   |-- integration/
-|   |   |   `-- unit/
-|   |   `-- ui/
-|   |       `-- src/
-|   |-- Super-Runtime/
-|   |   |-- benchmarks/
-|   |   |-- docs/
-|   |   |   |-- architecture/
-|   |   |   `-- research/
-|   |   |-- research/
-|   |   |   `-- references/
-|   |   |       |-- kimi-k3-in-c/
-|   |   |       `-- llama.cpp/
-|   |   |-- runtime/  [runtime subproyek; tidak ditelusuri]
-|   |   `-- tests/
-|   |       `-- contracts/
-|   `-- Tools-Photoshop/
 |-- tests/
 |   |-- activity-visual-capture/
 |   |   |-- bin/  [dependency/output/profile; tidak ditelusuri]

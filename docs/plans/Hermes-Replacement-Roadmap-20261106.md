@@ -21,8 +21,8 @@ Keputusan user 2026-11-06: pengguna dapat memakai Agent Core sebagai pengganti p
 ## Bukti dasar
 
 - Agent Core: `docs/research/hermes-parity/agent-core-inventory.md` (Sonnet, sampel diverifikasi supervisor terhadap source).
-- Hermes: `docs/research/hermes-parity/hermes-inventory.md` (Haiku, belum selesai saat dokumen ini ditulis). Kolom Inti/Tambahan dari file itu dipakai untuk menyesuaikan urutan di dalam gelombang.
-- Pemakaian Hermes nyata di mesin ini: folder `HERMES_HOME` hanya berisi `bootstrap-cache`, `logs`, `tools`, `uv-cache`, dan satu log installer. Tidak ada konfigurasi, memory, atau jejak gateway dan cron di sana. Lokasi lain belum seluruhnya diperiksa. Karena itu urutan platform memakai default, bukan data pemakaian, dan migrasi data diperkirakan ringan.
+- Hermes: `docs/research/hermes-parity/hermes-inventory.md` (Haiku). Supervisor memeriksa token path buktinya dengan skrip: 512 dari 541 ada apa adanya; sampel dari 29 sisanya ternyata nama file tanpa folder atau `cli-config.yaml` yang di repo bernama `.example`. Keberadaan path sudah diperiksa, kebenaran isi tiap baris belum. Area A dan B ditulis subagen dan belum dibaca baris per baris. Label Inti/Tambahan adalah penilaian Haiku. Rincian provider, manifest MCP, dan pola deteksi approval masih "belum diperiksa".
+- Pemakaian Hermes nyata di mesin ini: folder `HERMES_HOME` hanya berisi `bootstrap-cache`, `logs`, `tools`, `uv-cache`, dan satu log installer; `runtime/home` di checkout Hermes hanya berisi `cache` dan `installs`. Tidak ada konfigurasi, memory, atau jejak gateway dan cron yang ditemukan di kedua tempat itu. Karena itu urutan platform memakai default, bukan data pemakaian, dan migrasi data diperkirakan ringan.
 
 Koreksi atas inventaris: `AGENT_CORE_AI_ENABLED=false` hanya default kode. Native di mesin ini hidup (`/health`: `agentRuntime.status=available`, 4 provider terkonfigurasi).
 
@@ -39,7 +39,7 @@ Koreksi atas inventaris: `AGENT_CORE_AI_ENABLED=false` hanya default kode. Nativ
 
 Dipilih TypeScript di proses Core untuk gateway, cron, approval, dan CLI. Alasan: ini peran orkestrator I/O, seluruh owner yang dipakai ulang sudah TypeScript, dan biaya IPC tidak memberi manfaat.
 
-Ditunda dengan syarat: sandbox eksekusi dalam Rust dievaluasi di gelombang 9, karena isolasi OS memang kelas keunggulan Rust dan saat ini Agent Core hanya punya daftar direktori dan penjaga perintah. Python tidak diperlukan selama tidak ada inferensi lokal di dalam proses.
+Ditunda dengan syarat: sandbox eksekusi dalam Rust dievaluasi di gelombang 10, karena isolasi OS memang kelas keunggulan Rust dan saat ini Agent Core hanya punya daftar direktori dan penjaga perintah. Python tidak diperlukan selama tidak ada inferensi lokal di dalam proses.
 
 ## Gelombang kerja
 
@@ -48,15 +48,16 @@ Aturan urutan: gelombang berikutnya baru dikirim setelah hasil sebelumnya diveri
 | # | Gelombang | Isi | Selesai bila | Status |
 |---|---|---|---|---|
 | 0 | Fondasi | Akar masalah Memory dan Learning `HEALTH_PROBE_TIMEOUT`; `runningSessionCount` 88 dari 160 | Probe stabil di Core yang berjalan, `memory_search` menjawab, sesi mati tidak dihitung running | Berjalan (Sonnet) |
-| 1 | Gateway inti + Telegram | `src/gateway/`: kontrak adapter, router chat ke percakapan, allowlist pemilik, ledger pengiriman; adapter Telegram long polling tanpa dependensi baru | Pesan dari Telegram menjalankan turn dan balasan terkirim; pengirim asing ditolak tanpa membuat turn; kill dan restart tidak menggandakan balasan | Belum |
+| 1 | Gateway inti + Telegram | `src/gateway/`: kontrak adapter, router chat ke percakapan, allowlist pemilik, ledger pengiriman, perintah chat dasar (`/new`, `/stop`, `/retry`), perilaku saat agen sibuk; adapter Telegram long polling tanpa dependensi baru | Pesan dari Telegram menjalankan turn dan balasan terkirim; pengirim asing ditolak tanpa membuat turn; kill dan restart tidak menggandakan balasan | Belum |
 | 2 | Persetujuan interaktif | Gerbang aksi berisiko di host, bukan perilaku model: tertunda, setujui, tolak, kedaluwarsa; muncul di UI dan gateway | Aksi berisiko dari gateway berhenti sampai dijawab; penolakan terbukti tidak mengeksekusi | Belum |
 | 3 | Cron dengan pengiriman | Job store, jadwal, pencegahan tumpang tindih, riwayat, pengiriman ke gateway; tool dan perintah kelola | Job berjalan tanpa UI terbuka, hasil sampai ke Telegram, job terlewat saat Core mati ditangani sesuai kebijakan yang ditulis | Belum |
-| 4 | CLI manusia | `agentcore chat`, `status`, `doctor` di atas API HTTP yang ada | Percakapan berjalan dari terminal; `doctor` melaporkan kondisi nyata | Belum |
+| 4 | CLI dan TUI manusia | `agentcore chat` (interaktif, sekali jalan, lanjut sesi, keluaran JSONL), kelola sesi, `status`, `doctor`, lalu TUI, semuanya di atas API HTTP yang ada | Percakapan berjalan dan bisa disela dari terminal; sesi yang sama terlihat di UI dan gateway; `doctor` melaporkan kondisi nyata | Belum |
 | 5 | Provider | Rute bernama OpenAI, Gemini, model lokal; ganti model dari chat | Satu turn nyata per rute yang punya kunci; model lokal teruji lewat loopback | Belum |
 | 6 | Delegasi Native | Spawn subagen berbatas, paralel, grant diturunkan dari induk | Induk menerima hasil dua subagen; subagen tidak bisa melebihi grant induk | Belum |
 | 7 | Klien MCP dan pencarian sesi | Native memakai server MCP dari konfigurasi; tool cari percakapan lama | Tool MCP pihak ketiga terpanggil di bawah kebijakan grant; recall lintas percakapan terbukti | Belum |
 | 8 | Platform tambahan | Discord, Slack, email memakai kontrak adapter gelombang 1 | Tiap adapter lulus tes kontrak yang sama | Belum |
-| 9 | Pelengkap dan cutover | Setup terpandu, importer Hermes, evaluasi sandbox Rust, backend SSH dan WSL, suara; pensiun `HERMES_HOME` dan folder lama | Definisi selesai di atas terbukti seluruhnya | Belum |
+| 9 | Backend terminal | Pemilihan backend lewat konfigurasi; Docker dan SSH, termasuk transfer berkas dan proses latar; WSL | Satu tugas yang sama lulus di lokal, Docker, dan SSH, dengan penjaga perintah tetap aktif | Belum |
+| 10 | Pelengkap dan cutover | Setup terpandu, backup dan restore, update, importer Hermes, toolset per platform, API kompatibel OpenAI, evaluasi sandbox Rust, suara; pensiun `HERMES_HOME` dan folder lama | Definisi selesai di atas terbukti seluruhnya | Belum |
 
 Persetujuan (2) sebelum cron (3): job tanpa pengawasan dan perintah jarak jauh butuh gerbang yang sama. Sampai gelombang 2 selesai, turn dari gateway berjalan dengan grant minimal tanpa aksi mutasi.
 
