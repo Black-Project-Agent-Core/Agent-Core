@@ -182,7 +182,7 @@ describe('OpenAICompatibleProviderPool persistent routing', () => {
     expect(seen.at(-1)).toBe('Bearer secret-2');
   });
 
-  it('releases the locked credentials of one route, reports only a count, and ignores an unknown route', async () => {
+  it('releases the temporary lock of one route, reports only a count, and ignores an unknown route', async () => {
     const { statePath } = await fixturePath();
     fixtureFetch(async (_url: URL, init?: RequestInit) => auth(init) === 'Bearer secret-1'
       ? new Response(JSON.stringify({ error: { message: 'rate limit exceeded' } }), {
@@ -193,15 +193,37 @@ describe('OpenAICompatibleProviderPool persistent routing', () => {
     const pool = new OpenAICompatibleProviderPool(config(['secret-1', 'secret-2'], 2), statePath);
     await pool.complete([{ role: 'user', content: 'rate test' }]);
     const locked = () => {
-      const route = pool.health().routes?.find(item => item.id === 'openrouter');
-      return (route?.cooldownKeyCount ?? 0) + (route?.quotaBlockedKeyCount ?? 0);
+      const diagnostics = pool.routeDiagnostics('openrouter');
+      return (diagnostics?.skipped['rate-limit'] ?? 0) + (diagnostics?.skipped.quota ?? 0) + (diagnostics?.skipped.cooldown ?? 0);
     };
     expect(locked()).toBe(1);
-    const released = pool.resetRouteCredentials('openrouter');
-    expect(released).toBeGreaterThanOrEqual(1);
-    expect(Number.isInteger(released)).toBe(true);
+    expect(pool.resetRouteCredentials('openrouter')).toBe(1);
     expect(locked()).toBe(0);
     expect(pool.resetRouteCredentials('ghost')).toBe(0);
+    expect(pool.routeDiagnostics('ghost')).toBeNull();
+  });
+
+  it('keeps an invalid key invalid when its route lock is released', async () => {
+    const { statePath } = await fixturePath();
+    fixtureFetch(async (_url: URL, init?: RequestInit) => {
+      const header = auth(init);
+      if (header === 'Bearer secret-1') {
+        return new Response(JSON.stringify({ error: { message: 'invalid api key' } }), {
+          status: 401, headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (header === 'Bearer secret-2') {
+        return new Response(JSON.stringify({ error: { message: 'rate limit exceeded' } }), {
+          status: 429, headers: { 'content-type': 'application/json', 'retry-after': '120' },
+        });
+      }
+      return success('fallback-ok');
+    });
+    const pool = new OpenAICompatibleProviderPool(config(['secret-1', 'secret-2', 'secret-3'], 3), statePath);
+    await pool.complete([{ role: 'user', content: 'mixed test' }]);
+    expect(pool.routeDiagnostics('openrouter')?.skipped).toEqual({ invalid: 1, 'rate-limit': 1 });
+    expect(pool.resetRouteCredentials('openrouter')).toBe(1);
+    expect(pool.routeDiagnostics('openrouter')?.skipped).toEqual({ invalid: 1 });
   });
 
   it('moves to the next provider on provider-scoped failure and retains it for a new session', async () => {

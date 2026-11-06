@@ -328,6 +328,39 @@ async function handleRequest(
       return;
     }
 
+    const providerResetMatch = route.match(/^\/agent\/chat\/providers\/([^/]+)\/reset$/);
+    if (providerResetMatch) {
+      if (request.method !== 'POST') {
+        sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'POST' });
+        return;
+      }
+      if (firstHeader(request.headers['x-agent-core-chat-origin'])) {
+        sendJson(response, 403, { error: 'agent_chat_provider_reset_owner_only' });
+        return;
+      }
+      let providerId: string;
+      try {
+        providerId = decodeURIComponent(providerResetMatch[1]!);
+      } catch {
+        sendJson(response, 404, { error: 'agent_chat_provider_unknown' });
+        return;
+      }
+      if (!chat.listProviders().some(item => item.id === providerId)) {
+        sendJson(response, 404, { error: 'agent_chat_provider_unknown' });
+        return;
+      }
+      try {
+        const released = chat.resetProviderCredentials(providerId);
+        activityTracker.record('AGENT_RUNTIME', 'info', 'Owner released locked provider credentials', 'agent-provider-credentials-reset', { providerId, released });
+        sendJson(response, 200, { providerId, released });
+      } catch {
+        // The failure text can carry a credential detail, so only the route id is recorded.
+        activityTracker.record('AGENT_RUNTIME', 'error', 'Owner credential release failed', 'agent-provider-credentials-reset-failed', { providerId });
+        sendJson(response, 500, { error: 'agent_chat_provider_reset_failed' });
+      }
+      return;
+    }
+
     const stepMatch = route.match(/^\/agent\/chat\/steps\/([^/]+)\/(\d+)$/);
     if (stepMatch) {
       if (request.method !== 'GET') {

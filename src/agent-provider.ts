@@ -1340,4 +1340,17 @@ export class OpenAICompatibleProviderPool {
   resetCredential(providerId: string, credentialId: string): boolean {
     return this.scheduler.resetCredential(providerId, credentialId);
   }
+
+  /** Releases the temporary locks of one route and returns how many credentials changed. Ids and keys stay here. */
+  resetRouteCredentials(providerId: string): number {
+    const route = this.routes.find(item => item.id === normalizeProviderId(providerId));
+    if (!route) return 0;
+    return this.scheduler.releaseLocks(route.id, route.credentials.map(credential => credential.id));
+  }
+
+  /** Read-only eligibility counts of one route, for evidence and tests. Ids and keys stay here. */
+  routeDiagnostics(providerId: string): ProviderSelectionDiagnostics | null {
+    const route = this.routes.find(item => item.id === normalizeProviderId(providerId));
+    return route ? this.scheduler.diagnose({ providerId: route.id, model: route.model, credentials: route.credentials }) : null;
+  }
 }

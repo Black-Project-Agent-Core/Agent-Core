@@ -659,6 +659,19 @@ describe('Agent Core desktop UI host integration', () => {
       for (const key of ['model', 'providerId', 'reasoningEffort']) expect(autoPayload).not.toHaveProperty(key);
     });
 
+    it('sends the owner release of a locked route and shows a failure on that card only', () => {
+      window.location.hash = 'models';
+      boot();
+      hostProviders([{ id: 'atria', model: 'Atria-Dawn', configured: true, available: false, retryAt: '2026-10-25T09:00:00.000Z' }]);
+      fireEvent.click(screen.getByRole('button', { name: 'Release credentials' }));
+      expect(postMessage).toHaveBeenCalledWith({ type: 'agent-chat-provider-reset', providerId: 'atria' });
+      expect(screen.getByRole('button', { name: 'Release credentials' })).toBeDisabled();
+      act(() => messageHandler!({ data: { type: 'agent-chat-provider-reset-result', providerId: 'atria', ok: false, error: 'AGENT_CHAT_PROVIDER_RESET_FAILED' } }));
+      expect(screen.getByRole('button', { name: 'Release credentials' })).toBeEnabled();
+      expect(screen.getByText('Credentials could not be released. Try again.')).toBeInTheDocument();
+      window.location.hash = '';
+    });
+
     it('lets the owner choose a provider per message, with automatic rotation as the default', () => {
       boot();
       expect(postMessage).toHaveBeenCalledWith({ type: 'agent-chat-providers' });

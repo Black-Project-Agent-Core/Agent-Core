@@ -690,6 +690,66 @@ describe('PersistentCredentialScheduler', () => {
   });
 });
 
+describe('PersistentCredentialScheduler releaseRouteLocks', () => {
+  const now = 2_000_000;
+  const model = 'fixture-model';
+
+  function seed(dbPath: string, sql: string, values: Array<string | number | null>) {
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.prepare(sql).run(...values);
+    } finally {
+      db.close();
+    }
+  }
+
+  it('releases a scope block and an open breaker, keeps invalid and disabled keys, and counts only the changed key', async () => {
+    const dbPath = await fixture();
+    const scheduler = new PersistentCredentialScheduler(dbPath);
+    const keys = credentials(3);
+    const ids = keys.map(key => key.id);
+    await scheduler.select({ providerId: 'openrouter', model, credentials: keys, now: now - 1 });
+    seed(dbPath, `UPDATE provider_credential_state SET state = 'invalid' WHERE provider_id = ? AND credential_id = ?`, ['openrouter', ids[1]!]);
+    seed(dbPath, `UPDATE provider_credential_state SET state = 'disabled' WHERE provider_id = ? AND credential_id = ?`, ['openrouter', ids[2]!]);
+    seed(dbPath, `INSERT INTO provider_scope_blocks (provider_id, credential_id, model, scope_kind, scope_key, reason, expires_at_ms, state_revision, updated_at_ms)
+      VALUES (?, ?, ?, 'model-credential', ?, 'RATE_LIMIT', ?, 1, ?)`, ['openrouter', ids[0]!, model, model, now + 60_000, now]);
+    seed(dbPath, `INSERT INTO provider_breaker_state (provider_id, state, failure_count, opened_at_ms, retry_at_ms, open_cycle_count, state_revision, updated_at_ms)
+      VALUES (?, 'OPEN', 3, ?, ?, 1, 1, ?)`, ['openrouter', now, now + 60_000, now]);
+
+    const before = scheduler.diagnose({ providerId: 'openrouter', model, credentials: keys, now });
+    expect(before?.breaker).toBe('OPEN');
+    expect(before?.skipped).toEqual({ 'rate-limit': 1, invalid: 1, disabled: 1 });
+
+    expect(scheduler.releaseLocks('openrouter', ids, now)).toBe(1);
+    const after = scheduler.diagnose({ providerId: 'openrouter', model, credentials: keys, now });
+    expect(after?.breaker).toBe('CLOSED');
+    expect(after?.skipped).toEqual({ invalid: 1, disabled: 1 });
+    expect(after?.eligible).toBe(1);
+    expect(scheduler.releaseLocks('openrouter', ids, now)).toBe(0);
+  });
+
+  it('releases a cooldown row and an exhausted request quota, and keeps an authentication block in place', async () => {
+    const dbPath = await fixture();
+    const scheduler = new PersistentCredentialScheduler(dbPath);
+    const keys = credentials(3);
+    const ids = keys.map(key => key.id);
+    await scheduler.select({ providerId: 'openrouter', model, credentials: keys, now: now - 1 });
+    seed(dbPath, `UPDATE provider_credential_state SET state = 'cooldown', cooldown_until_ms = ?, cooldown_reason = 'RATE_LIMIT'
+      WHERE provider_id = ? AND credential_id = ?`, [now + 60_000, 'openrouter', ids[0]!]);
+    seed(dbPath, `INSERT INTO provider_scope_blocks (provider_id, credential_id, model, scope_kind, scope_key, reason, expires_at_ms, state_revision, updated_at_ms)
+      VALUES (?, ?, '', 'credential', 'credential', 'AUTH_INVALID', ?, 1, ?)`, ['openrouter', ids[1]!, now + 60_000, now]);
+    seed(dbPath, `INSERT INTO provider_quota_state (provider_id, credential_id, quota_scope_key, metric, limit_value, remaining_value, reset_at_ms, retry_after_ms, source, confidence, observed_at_ms, updated_at_ms)
+      VALUES (?, ?, '*', 'requests', 10, 0, ?, NULL, 'fixture', 1, ?, ?)`, ['openrouter', ids[2]!, now + 60_000, now, now]);
+
+    expect(scheduler.diagnose({ providerId: 'openrouter', model, credentials: keys, now })?.skipped)
+      .toEqual({ 'rate-limit': 2, invalid: 1 });
+    expect(scheduler.releaseLocks('openrouter', ids, now)).toBe(2);
+    const after = scheduler.diagnose({ providerId: 'openrouter', model, credentials: keys, now });
+    expect(after?.skipped).toEqual({ invalid: 1 });
+    expect(after?.eligible).toBe(2);
+  });
+});
+
 describe('classifyAgentProviderFailure matrix', () => {
   const base = 1_000_000_000;
 

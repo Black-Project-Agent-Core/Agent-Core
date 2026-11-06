@@ -480,7 +480,7 @@ Contoh intent untuk tujuan baru yang benar-benar diperlukan task: `{"path":"docs
 
 <!-- DIRECTORY-SNAPSHOT:START -->
 
-Daftar otomatis: **282 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. State instalasi hidup (`dist`, `.grafel`, `.rdc-standalone`, state di `runtime/*`) tidak dicantumkan agar daftar sama di Source dan Platform. Jangan edit blok ini; gunakan `npm run structure:sync`.
+Daftar otomatis: **283 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. State instalasi hidup (`dist`, `.grafel`, `.rdc-standalone`, state di `runtime/*`) tidak dicantumkan agar daftar sama di Source dan Platform. Jangan edit blok ini; gunakan `npm run structure:sync`.
 
 ```text
 <PROJECT_ROOT>/
@@ -521,7 +521,8 @@ Daftar otomatis: **282 direktori/boundary**. Subtree privat, dependency, generat
 |-- .codex/
 |-- .git/  [metadata Git; tidak ditelusuri]
 |-- .github/
-|   `-- ISSUE_TEMPLATE/
+|   |-- ISSUE_TEMPLATE/
+|   `-- workflows/
 |-- .handoff/
 |-- .impeccable/
 |-- .recall/

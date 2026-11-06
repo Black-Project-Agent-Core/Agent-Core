@@ -21,8 +21,9 @@ Mesin lokal hanya mengerjakan yang memang harus di sini: menjalankan Core, memeg
 | Pekerjaan | Tempat | Alasan |
 |---|---|---|
 | Menulis kode dan dokumen | Sesi cloud, satu branch per tugas | Beban terbesar pindah dari mesin, dan pekerja tidak lagi berbagi satu checkout |
-| Tes TypeScript dan UI | GitHub Actions, Ubuntu, dibagi dengan `vitest --shard` | Berjalan paralel tanpa memakai mesin lokal |
-| Tes khusus Windows, kompilasi dan tes launcher C#, helper DPAPI dengan kunci tiruan | GitHub Actions, Windows | Tetap lingkungan Windows tanpa memakai mesin lokal |
+| Tes TypeScript, dibagi dengan `vitest --shard` | GitHub Actions, Windows | Run pertama di Ubuntu gagal karena tes mengasumsikan jalur Windows dan `dist` yang sudah dibangun |
+| Typecheck dan tes UI | GitHub Actions, Ubuntu | Tidak bergantung pada Windows |
+| Kompilasi dan tes launcher C#, helper DPAPI dengan kunci tiruan | GitHub Actions, Windows | Tetap lingkungan Windows tanpa memakai mesin lokal |
 | Build `Agent Core.exe` dan `dist` | GitHub Actions, Windows, disimpan sebagai artifact | Tahap akhir, sesudah hasilnya terbukti setara dengan build lokal |
 | Eksekusi cepat sekali pakai | Vercel Sandbox | Hanya bila perlu lingkungan terpisah. Sesi cloud sudah punya shell dan Actions sudah menjalankan tes, jadi ini bukan jalur utama |
 | Review kode | Sesi cloud atau subagen pada diff branch | Hanya membaca |
@@ -52,6 +53,10 @@ Tiap langkah punya bukti lulus. Langkah berikutnya menunggu langkah sebelumnya l
 3. **Uji satu fase di cloud.** Fase 2 dikerjakan satu sesi cloud. Sonnet lokal ditutup selama uji. Bukti: PR hijau, dan angka pembanding di bawah tercatat.
 4. **Pindahkan build.** Workflow Windows menghasilkan artifact. Bukti: artifact lolos promosi dry-run dan berjalan sama dengan build lokal.
 5. **Jadikan bawaan.** Bila uji fase 2 lulus, fase berikutnya memakai jalur ini.
+
+## Temuan uji coba, 2026-11-06
+
+Menutup satu sesi CLI yang menganggur hanya membebaskan sekitar 150 MB RAM. Sesi yang menganggur bukan beban besar, jadi manfaat utama kemungkinan datang saat tes dan build dipindahkan. Sesi cloud bisa dimulai dengan menyebut nama repository.
 
 ## Ukuran keberhasilan
 

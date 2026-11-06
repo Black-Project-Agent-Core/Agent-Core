@@ -98,7 +98,7 @@ Multi-akun manusia, jalur masuk publik, OAuth langganan provider, penerjemah lin
 
 ## Langkah manual user
 
-Tidak ada untuk fase 1 sampai 7 bila kunci sudah ada di `.env`. Menghapus kunci dari `.env` dan mengalihkan klien nyata diputuskan user di fase 8.
+Tidak ada untuk fase 1 sampai 7 bila kunci sudah ada di `.env`. Menghapus kunci dari `.env` dan mengalihkan klien nyata diputuskan user di fase 8. Sebelum menghapus kunci dari `.env`, user memutuskan cadangan vault: master key terikat DPAPI akun Windows ini, jadi vault tidak terbuka lagi sesudah Windows diinstal ulang atau di mesin lain. Rekomendasi: ekspor terenkripsi dengan passphrase.
 
 ## Belum terbukti, diperiksa di fase pemiliknya
 

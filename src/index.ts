@@ -14,6 +14,7 @@ import { CodeIntelligenceService } from './code-intelligence/service.js';
 import { loadConfig, type AppConfig } from './config.js';
 import { createHttpHandler } from './http/app.js';
 import { boundedHealthProbe } from './http/health.js';
+import { getCredentialVaultStatus } from './security/credential-vault.js';
 import { createProcessIdentityReader } from './http/process-identity.js';
 import { HttpSecurityPolicy } from './http/security-policy.js';
 import { LearningService } from './learning/service.js';
@@ -324,6 +325,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
         ...(agentChat ? { agentChat: agentChat.health() } : {}),
         webResearch: webResearch.health(),
         mcpMutationSafety: mutationSafety.status(),
+        credentialVault: getCredentialVaultStatus(),
       };
     },
     mcpHandler: createMcpHttpHandler({

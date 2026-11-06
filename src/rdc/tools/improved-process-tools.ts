@@ -12,6 +12,7 @@ import { spawn } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { buildMachineShellEnv } from '../../security/environment.js';
 
 // Get the directory where the MCP is installed (for ES module imports)
 const __filename = fileURLToPath(import.meta.url);
@@ -36,6 +37,7 @@ async function executeNodeCode(code: string, timeout_ms: number = 30000): Promis
       const proc = spawn(process.execPath, [tempFile], {
         cwd: mcpRoot,
         timeout: timeout_ms,
+        env: buildMachineShellEnv({}, { ...process.env }),
         windowsHide: true  // Prevent visible console windows on Windows
       });
 

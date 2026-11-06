@@ -11,6 +11,7 @@ export type SystemId =
   | 'external-learning'
   | 'web-research'
   | 'mutation-safety'
+  | 'credential-vault'
   | 'partner'
   | 'phone'
   | 'game'

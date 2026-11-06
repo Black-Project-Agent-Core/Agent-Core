@@ -1158,4 +1158,56 @@ export class ProviderStateStore {
       return Number(result.changes) > 0;
     });
   }
+
+  /**
+   * Releases only the temporary locks of one route: cooldown and quota rows, scope blocks other than
+   * authentication or model entitlement, exhausted request quota, and an open breaker. Invalid and disabled
+   * keys stay as they are. Returns how many credentials changed; a credential counts once.
+   */
+  releaseRouteLocks(providerIdInput: string, credentialIds: string[], now = Date.now()): number {
+    const providerId = normalizeProviderId(providerIdInput);
+    const keptReasons = `('AUTH_INVALID', 'MODEL_ACCESS', 'MODEL_NOT_FOUND')`;
+    return this.withDb(db => this.inTransaction(db, () => {
+      const kept = new Set((db.prepare(`
+        SELECT credential_id FROM provider_credential_state
+        WHERE provider_id = ? AND state IN ('invalid', 'disabled')
+      `).all(providerId) as Array<{ credential_id: string }>).map(row => row.credential_id));
+      const releasable = credentialIds.filter(id => !kept.has(id));
+      const changed = new Set<string>();
+      for (const credentialId of releasable) {
+        const row = db.prepare(`
+          UPDATE provider_credential_state
+          SET state = 'active', cooldown_until_ms = NULL, cooldown_reason = NULL,
+              backoff_level = 0, last_error_at_ms = NULL, last_error_class = NULL,
+              last_http_status = NULL, state_revision = state_revision + 1, updated_at_ms = ?
+          WHERE provider_id = ? AND credential_id = ? AND state IN ('cooldown', 'quota_blocked')
+        `).run(now, providerId, credentialId);
+        if (Number(row.changes) > 0) changed.add(credentialId);
+        const quota = db.prepare(`
+          DELETE FROM provider_quota_state
+          WHERE provider_id = ? AND credential_id = ? AND metric = 'requests' AND remaining_value <= 0
+        `).run(providerId, credentialId);
+        if (Number(quota.changes) > 0) changed.add(credentialId);
+        const block = db.prepare(`
+          DELETE FROM provider_scope_blocks
+          WHERE provider_id = ? AND credential_id = ? AND reason NOT IN ${keptReasons}
+        `).run(providerId, credentialId);
+        if (Number(block.changes) > 0) changed.add(credentialId);
+      }
+      // A route-wide block applies to every releasable key, so one removal releases them all.
+      const routeWide = db.prepare(`
+        DELETE FROM provider_scope_blocks
+        WHERE provider_id = ? AND credential_id = '' AND reason NOT IN ${keptReasons}
+      `).run(providerId);
+      if (Number(routeWide.changes) > 0) for (const credentialId of releasable) changed.add(credentialId);
+      db.prepare(`
+        UPDATE provider_breaker_state
+        SET state = 'CLOSED', failure_count = 0, last_failure_at_ms = NULL, last_failure_class = NULL,
+            opened_at_ms = NULL, retry_at_ms = NULL, half_open_probe_count = 0, open_cycle_count = 0,
+            state_revision = state_revision + 1, updated_at_ms = ?
+        WHERE provider_id = ? AND (state <> 'CLOSED' OR failure_count > 0)
+      `).run(now, providerId);
+      return changed.size;
+    }));
+  }
 }

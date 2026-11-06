@@ -336,6 +336,14 @@ public sealed class AgentCoreRuntime : IDisposable
         return await SendAgentChatJsonAsync(request);
     }
 
+    /// <summary>Releases the locked credentials of one provider route (POST /agent/chat/providers/{id}/reset). Returns the Core's count only.</summary>
+    public async Task<JsonElement> ResetAgentProviderCredentialsAsync(string providerId)
+    {
+        var id = Uri.EscapeDataString(providerId);
+        using var request = CreateAgentChatRequest(HttpMethod.Post, $"/agent/chat/providers/{id}/reset");
+        return await SendAgentChatJsonAsync(request);
+    }
+
     public async Task<JsonElement> ReadAgentStepAsync(string turnId, int seq)
     {
         var id = Uri.EscapeDataString(turnId);

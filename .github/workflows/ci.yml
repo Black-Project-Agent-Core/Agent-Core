@@ -31,16 +31,21 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm run path:check
+      # path:check is not run here: its structure snapshot lists folders that exist only on the owner's PC.
       - run: npx tsc --noEmit
 
   tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The suite assumes Windows paths and a built dist; Ubuntu fails on both, so it runs here.
+    runs-on: windows-latest
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
+    env:
+      # The default temp path uses an 8.3 name (RUNNER~1) that the path policy refuses.
+      TEMP: D:\a\_temp
+      TMP: D:\a\_temp
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -48,6 +53,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - run: node scripts/browser-control/build-open-browser-use-transport.mjs
+      - run: npx tsc -p tsconfig.json
       - run: npx vitest run --shard=${{ matrix.shard }}/4
 
   ui:
@@ -60,29 +67,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: src/ui/package-lock.json
+      # The UI typecheck takes its Node types from the root install.
+      - run: npm ci --no-audit --no-fund
       - run: npm ci --no-audit --no-fund
         working-directory: src/ui
       - run: npx tsc --noEmit -p tsconfig.json
         working-directory: src/ui
       - run: npx vitest run
         working-directory: src/ui
-
-  windows-tests:
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci --no-audit --no-fund
-      # shortcut: selects Windows-bound tests by keyword; replace with a tag once the baseline shows which ones matter.
-      - name: Run Windows-bound tests
-        shell: bash
-        run: |
-          files=$(grep -lE "win32|powershell|\.cmd|schtasks|DPAPI|wmic|Get-Process" tests/*.ts | tr '\n' ' ')
-          npx vitest run $files
 
   launcher:
     runs-on: windows-latest

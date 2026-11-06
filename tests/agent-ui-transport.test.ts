@@ -7,6 +7,7 @@ import { FileKeyStore } from '../src/auth/key-store.js';
 import { createHttpHandler, type HttpHandlerOptions } from '../src/http/app.js';
 import { HttpSecurityPolicy } from '../src/http/security-policy.js';
 import { validateAgentProviderModel } from '../src/agent-provider.js';
+import { activityTracker } from '../src/tracker/activity-tracker.js';
 
 const roots: string[] = [];
 const servers: Server[] = [];
@@ -85,6 +86,7 @@ async function setup(dreaming?: HttpHandlerOptions['dreaming']) {
     readStepDetail: vi.fn((turnId: string, seq: number) => turnId === 'turn-1' && seq === 2
       ? { inputText: '{"path":"a.ts"}', outputText: 'ok', inputTruncated: false, outputTruncated: false } : null),
     getLastSelection: vi.fn((): unknown => undefined),
+    resetProviderCredentials: vi.fn((providerId: string) => (providerId === 'atria' ? 2 : 0)),
     recordOwnerSelection: vi.fn((body: Record<string, unknown>) => ({ providerId: String(body.providerId), model: String(body.model ?? ''), reasoningEffort: body.reasoningEffort ?? 'auto', updatedAtMs: 1 })),
     validateProviderModel: vi.fn((model: unknown, providerId?: string) =>
       validateAgentProviderModel(model, providerId, ['claude-sonnet-5-5', 'claude-opus-5-5'])),
@@ -382,5 +384,38 @@ describe('launcher-only native agent HTTP transport', () => {
     expect((await step('turn-1/2', { method: 'POST' })).status).toBe(405);
     expect((await step('turn-1/2', { headers: { ...headers, 'x-agent-core-chat-origin': 'external-controller' } })).status).toBe(403);
     expect((await fetch(`${baseUrl}/agent/chat/steps/turn-1/2`)).status).toBe(401);
+  });
+
+  it('releases the locked credentials of one route for the owner UI only and reports just the count', async () => {
+    const { baseUrl, agentChat } = await setup();
+    const headers = { 'x-agent-core-ui-token': 'fixture-ui-token' };
+    const reset = (providerId: string, init: RequestInit = {}) => fetch(`${baseUrl}/agent/chat/providers/${providerId}/reset`, { method: 'POST', headers, ...init });
+    expect((await fetch(`${baseUrl}/agent/chat/providers/atria/reset`, { method: 'POST' })).status).toBe(401);
+    expect((await fetch(`${baseUrl}/agent/chat/providers/atria/reset`, { headers })).status).toBe(405);
+    expect((await reset('atria', { headers: { ...headers, 'x-agent-core-chat-origin': 'external-controller' } })).status).toBe(403);
+    expect((await reset('atria', { headers: { ...headers, 'x-agent-core-chat-origin': 'other-controller' } })).status).toBe(403);
+    expect((await reset('ghost')).status).toBe(404);
+    expect((await reset('%E0%A4%A')).status).toBe(404);
+    expect(agentChat.resetProviderCredentials).not.toHaveBeenCalled();
+    const released = await reset('atria');
+    expect(released.status).toBe(200);
+    expect(await released.json()).toEqual({ providerId: 'atria', released: 2 });
+    expect(agentChat.resetProviderCredentials).toHaveBeenCalledWith('atria');
+  });
+
+  it('records the owner reset in the activity tracker and never echoes a failure detail', async () => {
+    const { baseUrl, agentChat } = await setup();
+    const headers = { 'x-agent-core-ui-token': 'fixture-ui-token' };
+    const record = vi.spyOn(activityTracker, 'record');
+    try {
+      await fetch(`${baseUrl}/agent/chat/providers/atria/reset`, { method: 'POST', headers });
+      expect(record).toHaveBeenCalledWith('AGENT_RUNTIME', 'info', expect.any(String), 'agent-provider-credentials-reset', { providerId: 'atria', released: 2 });
+      agentChat.resetProviderCredentials.mockImplementationOnce(() => { throw new Error('leaked-credential-id-7'); });
+      const failed = await fetch(`${baseUrl}/agent/chat/providers/atria/reset`, { method: 'POST', headers });
+      expect(failed.status).toBe(500);
+      expect(await failed.text()).not.toContain('leaked-credential-id-7');
+    } finally {
+      record.mockRestore();
+    }
   });
 });

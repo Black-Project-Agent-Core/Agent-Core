@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import { validatePath } from './tools/filesystem.js';
 import { capture } from './utils/capture.js';
 import { getRipgrepPath } from './utils/ripgrep-resolver.js';
+import { buildMachineShellEnv } from '../security/environment.js';
 import { isExcelFile } from './utils/files/index.js';
 import { assertRegularFile, readRegularFileBounded } from './utils/files/safe-regular-file.js';
 import PizZip from 'pizzip';
@@ -89,7 +90,7 @@ export interface SearchSessionOptions {
     }
     
     // Start ripgrep process
-    const rgProcess = spawn(rgPath, args, { windowsHide: true });  // Prevent visible console windows on Windows
+    const rgProcess = spawn(rgPath, args, { windowsHide: true, env: buildMachineShellEnv({}, { ...process.env }) });  // Prevent visible console windows on Windows
     
     if (!rgProcess.pid) {
       throw new Error('Failed to start ripgrep process');
