@@ -71,11 +71,13 @@ const DENY_ANYWHERE = new Set([
   'backups', 'secrets', '_artifacts', 'launcher-publish', '.tmp', 'do not touch without instruction explicit',
   '.ssh', '.aws', '.gnupg', '.docker', '.secrets', '.credentials',
 ]);
-// `release` and `runtime` are state folders at the top of an install. Only directly under the workspace root they are
-// excluded; a nested folder with the same name holds ordinary code (scripts/release, src/runtime) and stays indexed.
+// `release` and `runtime` are state folders of an install (memory, tracker, bridge-auth). They are excluded at any depth,
+// except below a top-level code folder: scripts/release and src/runtime are ordinary source. Any other first segment,
+// such as a parent folder that holds the install or .worktrees, keeps them excluded.
 const STATE_FOLDER_NAMES = ['release', 'runtime'];
+const CODE_ROOT_FOLDERS = new Set(['scripts', 'src', 'tests', 'docs']);
 // Only directly under the workspace root.
-const DENY_TOP_LEVEL = new Set(['subproject', 'rdc', '.rdc-standalone', '.grafel', ...STATE_FOLDER_NAMES]);
+const DENY_TOP_LEVEL = new Set(['subproject', 'rdc', '.rdc-standalone', '.grafel']);
 // Names that hold secrets, for files and folders alike. isCredentialFileName (security/credential-names) adds
 // .env files, key and certificate extensions, and editor backup copies of them.
 const DENY_NAME: RegExp[] = [
@@ -315,9 +317,17 @@ function deniedPrefix(relative: string): boolean {
   return DENY_RELATIVE_PREFIXES.some(prefix => lower === prefix || lower.startsWith(`${prefix}/`));
 }
 
+// A state folder (release, runtime) at any depth, unless the path starts in a top-level code folder.
+function deniedStateFolder(relative: string): boolean {
+  const segments = relative.split(/[\\/]/);
+  if (CODE_ROOT_FOLDERS.has(segments[0].toLowerCase())) return false;
+  return segments.some(segment => STATE_FOLDER_NAMES.includes(segment.toLowerCase()));
+}
+
 // A path relative to the root is denied when it sits under a denied prefix or any of its segments is denied.
 function deniedRelativePath(relative: string): boolean {
   return deniedPrefix(relative)
+    || deniedStateFolder(relative)
     || relative.split(/[\\/]/).some((segment, index) => isDeniedEntry(segment, index === 0));
 }
 
@@ -617,7 +627,7 @@ async function listFolder(state: BuildState, relDir: string): Promise<void> {
     const relative = relDir ? `${relDir}/${entry.name}` : entry.name;
     names.add(relative);
     const child = path.join(absolute, entry.name);
-    if (isDeniedEntry(entry.name, relDir === '') || deniedPrefix(relative) || CHANGESET_APPLIED.test(child)) continue;
+    if (isDeniedEntry(entry.name, relDir === '') || deniedPrefix(relative) || deniedStateFolder(relative) || CHANGESET_APPLIED.test(child)) continue;
     if (entry.isSymbolicLink()) {
       linkRecords.push({ relative, reason: 'link' });
       continue;
@@ -1119,10 +1129,13 @@ export async function assertSearchRoot(root: string, repoRoot: string): Promise<
     return;
   }
   if (isInside(target, repo)) throw new Error('CODE_CONTEXT_ROOT_TOO_BROAD');
-  // A folder outside the repository that is itself a state folder (release, runtime) is refused by name, as before:
-  // the top-level rule covers folders inside a workspace, not a root that is the state folder.
+  // A folder outside the repository is refused by its own name, as before, and when any folder on its path is a state
+  // folder (release, runtime): a root under an install's runtime folder would expose its memory and bridge-auth state.
+  // No code-folder exception applies here.
   const rootNames = [path.basename(path.resolve(root)), path.basename(target)];
-  if (rootNames.some(name => isDeniedEntry(name, false) || STATE_FOLDER_NAMES.includes(name.toLowerCase()))) {
+  const rootSegments = [...path.resolve(root).split(/[\\/]/), ...target.split(/[\\/]/)];
+  if (rootNames.some(name => isDeniedEntry(name, false))
+    || rootSegments.some(segment => STATE_FOLDER_NAMES.includes(segment.toLowerCase()))) {
     throw new Error('CODE_CONTEXT_ROOT_DENIED');
   }
 }

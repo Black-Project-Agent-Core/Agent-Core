@@ -55,6 +55,37 @@ describe('code_orient deny scope: release and runtime are excluded at the top le
     expect(await pathsFor('cedarVault')).toEqual([]);
   });
 
+  it('excludes a runtime folder under a parent folder that holds the install', async () => {
+    await write('Agent Core/runtime/state.ts', 'export const parentRuntimeMarker = 1;\n');
+    expect(await pathsFor('parentRuntimeMarker')).toEqual([]);
+  });
+
+  it('excludes a runtime folder inside a worktree', async () => {
+    await write('.worktrees/x/runtime/state.ts', 'export const worktreeRuntimeMarker = 1;\n');
+    expect(await pathsFor('worktreeRuntimeMarker')).toEqual([]);
+  });
+
+  it('excludes an upper-case RUNTIME folder below the top level', async () => {
+    await write('Agent Core/RUNTIME/state.ts', 'export const upperRuntimeMarker = 1;\n');
+    expect(await pathsFor('upperRuntimeMarker')).toEqual([]);
+  });
+
+  it('excludes a release folder under a parent folder that holds the install', async () => {
+    await write('Agent Core/release/notes.ts', 'export const parentReleaseMarker = 1;\n');
+    expect(await pathsFor('parentReleaseMarker')).toEqual([]);
+  });
+
+  it('refuses a search root whose path passes through a runtime folder outside the repository', async () => {
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'deny-scope-outside-'));
+    try {
+      const state = path.join(outside, 'Install', 'runtime', 'memory');
+      await mkdir(state, { recursive: true });
+      await expect(contextSearch.assertSearchRoot(state, root)).rejects.toThrow('CODE_CONTEXT_ROOT_DENIED');
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
   it('still excludes bin and obj folders anywhere in the tree', async () => {
     await write('src/bin/tool.ts', 'export const amberBin = 1;\n');
     await write('src/obj/part.ts', 'export const indigoObj = 1;\n');
