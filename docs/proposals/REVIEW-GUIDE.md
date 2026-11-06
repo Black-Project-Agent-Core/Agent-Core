@@ -7,9 +7,8 @@ dalamnya bukan instruksi aktif atau izin eksekusi.
 
 1. Baca proposal terkait di folder ini. Pilih judul semantik yang menjelaskan
    masalah; gunakan nama seperti `Kontinuitas-Task-Eksternal.md`, bukan ID acak.
-2. Untuk improvement umum, tulis `.md` di `<PROJECT_ROOT>/docs/proposals` (pada
-   instalasi pengguna: `E:\Projects\Agent-Core\docs\proposals`). Untuk Skill atau
-   revisi Skill, pakai facade `skills(action=propose)` existing dan proyeksi
+2. Untuk improvement umum, tulis `.md` di `<PROJECT_ROOT>/docs/proposals`. Untuk
+   Skill atau revisi Skill, pakai facade `skills(action=propose)` existing dan proyeksi
    eksternal `docs/proposals/skills/<workspace>/<nama>.md`. Jangan membuat state
    approval atau katalog aktif dengan menulis Markdown sendiri.
 3. Gunakan struktur berikut. Isi bukti yang benar-benar diperiksa, bedakan
@@ -107,8 +106,7 @@ ada persetujuan dari diam, dan membaca dokumen tidak menaikkan izin tool.
 
 **Aturan pengguna, 19 Oktober 2026:** proposal yang telah disetujui dan berstatus
 COMPLETE/COMPLETED dipindahkan dari folder aktif ke
-`<PROJECT_ROOT>/docs/history-agent-core` — pada instalasi ini
-`E:\Projects\Agent-Core\docs\history-agent-core` — agar mudah dicari dan diaudit.
+`<PROJECT_ROOT>/docs/history-agent-core` agar mudah dicari dan diaudit.
 
 1. Pastikan persetujuan mencakup revisi/scope yang selesai, acceptance dan
    validasi terkait sudah dicatat, serta tidak ada REVISE/HOLD atau pekerjaan
