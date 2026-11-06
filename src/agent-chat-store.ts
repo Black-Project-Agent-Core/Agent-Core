@@ -458,6 +458,22 @@ export class AgentChatStore {
     }
   }
   /** Last provider/model/effort the owner chose; durable so a restart never changes it. Absent or corrupt means none. */
+  /** Provider models that finished at least one turn without an error, sorted by provider and model. */
+  listVerifiedModels(): Array<{ providerId: string; model: string; successfulTurns: number; lastSuccessAtMs: number }> {
+    return this.withDb(db => (db.prepare(`
+      SELECT provider_id AS providerId, model, COUNT(*) AS successfulTurns, MAX(completed_at_ms) AS lastSuccessAtMs
+      FROM chat_turns
+      WHERE status='finalized' AND error_code IS NULL AND provider_id IS NOT NULL AND model IS NOT NULL AND completed_at_ms IS NOT NULL
+      GROUP BY provider_id, model
+      ORDER BY provider_id, model
+    `).all() as Array<Record<string, unknown>>).map(row => ({
+      providerId: String(row.providerId),
+      model: String(row.model),
+      successfulTurns: Number(row.successfulTurns),
+      lastSuccessAtMs: Number(row.lastSuccessAtMs),
+    })));
+  }
+
   getLastSelection(): AgentChatLastSelection | undefined {
     return this.withDb(db => {
       const row = db.prepare("SELECT value FROM chat_meta WHERE key='last_selection'").get() as { value?: string } | undefined;

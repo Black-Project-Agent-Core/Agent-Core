@@ -285,7 +285,7 @@ async function handleRequest(
       }
       await chat.refreshProviderCapabilities();
       const selection = chat.getLastSelection();
-      sendJson(response, 200, { providers: chat.listProviders(), ...(selection ? { selection } : {}) });
+      sendJson(response, 200, { providers: chat.listProviders(), verifiedModels: chat.listVerifiedModels(), ...(selection ? { selection } : {}) });
       return;
     }
 

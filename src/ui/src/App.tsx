@@ -14,7 +14,7 @@ import { attachmentPayload, type AttachmentDraft } from './attachments';
 import { ReferenceUi } from './pages';
 import type { PageId } from './components';
 
-const validPages = new Set<PageId>(['chat','dashboard','goals','artifacts','models','memory','learning','core','systems','workflows','activity','diagnostics','settings','wizard','skills']);
+const validPages = new Set<PageId>(['chat','dashboard','goals','artifacts','models','memory','learning','core','systems','workflows','activity','diagnostics','settings','wizard','skills','router']);
 
 function pageFromHash(): PageId {
   const hash=window.location.hash.replace(/^#/,'').trim();
@@ -142,7 +142,7 @@ export default function App() {
           persistedKeyRef.current=selectionKey(merged.providerId,merged.model,merged.reasoningEffort);
           writeLocalSelection(merged);
         }
-        setAgentChat(prev=>({...prev,providers:message.result.providers??[],
+        setAgentChat(prev=>({...prev,providers:message.result.providers??[],verifiedModels:message.result.verifiedModels??[],
           ...(merged?{providerChoice:merged.providerId,modelChoice:merged.model,reasoningChoice:merged.reasoningEffort,selectionSaved:true}:{})}));
         return;
       }

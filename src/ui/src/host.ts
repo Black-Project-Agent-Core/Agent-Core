@@ -335,6 +335,9 @@ export type AgentChatProvider = {
   models?: Array<{ id: string; reasoningEfforts?: ReasoningEffort[] }>;
 };
 
+/** A model that finished at least one turn in Agent Core without an error. */
+export type VerifiedModel = { providerId: string; model: string; successfulTurns: number; lastSuccessAtMs: number };
+
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type ReasoningChoice = 'auto' | ReasoningEffort;
 
@@ -342,6 +345,7 @@ export type AgentChatUiState = {
   conversations: AgentChatConversation[];
   /** Routes the owner can pin for a message; absent until the host answers. */
   providers?: AgentChatProvider[];
+  verifiedModels?: VerifiedModel[];
   /** "auto" keeps automatic rotation; otherwise a route id from providers. */
   providerChoice?: string;
   modelChoice: string;
@@ -554,7 +558,7 @@ type HostEnvelope =
   | { type: 'activity-detail-result'; result: ActivityDetailPage }
   | { type: 'agent-result'; requestId: string; result?: AgentRunResult; error?: string }
   | { type: 'agent-chat-list-result'; result: { conversations?: AgentChatConversation[] } }
-  | { type: 'agent-chat-providers-result'; result: { providers?: AgentChatProvider[]; /** Server-side last-used {providerId, model, reasoningEffort, updatedAtMs}. */ selection?: unknown } }
+  | { type: 'agent-chat-providers-result'; result: { providers?: AgentChatProvider[]; verifiedModels?: VerifiedModel[]; /** Server-side last-used {providerId, model, reasoningEffort, updatedAtMs}. */ selection?: unknown } }
   | { type: 'agent-chat-state'; requestId?: string; result: AgentChatDetail }
   | { type: 'agent-chat-event'; requestId: string; conversationId?: string; envelope: { type: string; event?: AgentChatEvent; result?: unknown; error?: string } }
   | { type: 'agent-chat-step-result'; requestId: string; turnId: string; seq: number; result: StepDetailResult }

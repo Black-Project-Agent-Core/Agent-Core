@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowRight, Boxes, BrainCircuit, Code2, Database, FileText, Folder, RefreshCw, Search, Sparkles, Target } from 'lucide-react';
 import { MetricCard, PageHero, Panel, StatusBadge, TinyButton, Toggle, type PageId } from './components';
 import { TaskChangesPanel } from './TaskChangesPanel';
-import { Plus, Moon, ListTodo, Lock } from 'lucide-react';
+import { Plus, Moon, ListTodo, Lock, Network } from 'lucide-react';
 import { PrototypeHeader, PrototypeCard, UpgradeControl } from './PrototypePages';
 import type { AgentChatUiState, DesktopSnapshot } from './host';
 
@@ -41,6 +41,37 @@ export function ModelsPage(props: Props) {
         </div>
       </PrototypeCard>);
     })}</div>
+  </div>;
+}
+
+export function RouterPage(props: Props) {
+  const providers = props.agentChat.providers;
+  const models = props.agentChat.verifiedModels;
+  const routeStatus = (providerId: string, model: string) => {
+    const route = providers?.find(item => item.id === providerId);
+    if (!route) return { tone: 'unknown' as const, label: 'Not listed' };
+    if (!route.configured) return { tone: 'offline' as const, label: 'Not configured' };
+    if (!(route.models?.some(item => item.id === model) || route.model === model)) return { tone: 'unknown' as const, label: 'Not the current model' };
+    return route.available ? { tone: 'healthy' as const, label: 'Available' } : { tone: 'warning' as const, label: 'Waiting' };
+  };
+  return <div className="prototype-page launcher-data-page">
+    <PrototypeHeader title="Router" badge="Not active" description="Agent Core will be the one router for model calls. Routing is not built yet, so this page only lists the models registered for it."><UpgradeControl reason="The routing engine is not built yet."><Network size={14}/>Enable Router</UpgradeControl></PrototypeHeader>
+    <Panel>
+      <div className="router-state"><StatusBadge tone="offline" label="Router off"/><p>Model calls still follow the selection in AI Workspace and AI Models. Nothing passes through this page.</p></div>
+    </Panel>
+    <Panel>
+      <div className="router-models-heading"><h2>Registered models</h2>{models && <span>{models.length} {models.length === 1 ? 'model' : 'models'}</span>}</div>
+      <p className="router-rule">A model is registered after it finishes at least one turn in Agent Core without an error.</p>
+      {!models && <p role="status">Waiting for model information from the desktop host.</p>}
+      {models?.length === 0 && <p>No model has finished a turn yet. Run one in AI Workspace and it appears here.</p>}
+      {Boolean(models?.length) && <div className="router-table-wrap"><table className="simple-table">
+        <thead><tr><th scope="col">Model</th><th scope="col">Provider</th><th scope="col">Provider route</th><th scope="col" className="router-number">Successful turns</th><th scope="col">Last success</th></tr></thead>
+        <tbody>{models!.map(item => { const status = routeStatus(item.providerId, item.model); return <tr key={item.providerId + '/' + item.model}>
+          <td className="router-model">{item.model}</td><td>{item.providerId}</td><td><StatusBadge tone={status.tone} label={status.label}/></td>
+          <td className="router-number">{item.successfulTurns}</td><td>{new Date(item.lastSuccessAtMs).toLocaleString()}</td>
+        </tr>; })}</tbody>
+      </table></div>}
+    </Panel>
   </div>;
 }
 

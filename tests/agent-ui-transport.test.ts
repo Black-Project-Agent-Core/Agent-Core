@@ -74,6 +74,7 @@ async function setup(dreaming?: HttpHandlerOptions['dreaming']) {
       };
     }),
     listProviders: vi.fn(() => [{ id: 'atria', model: 'Atria-Dawn', configured: true, available: true }]),
+    listVerifiedModels: vi.fn(() => [{ providerId: 'atria', model: 'Atria-Dawn', successfulTurns: 3, lastSuccessAtMs: 9 }]),
     refreshProviderCapabilities: vi.fn(async () => undefined),
     readStepDetail: vi.fn((turnId: string, seq: number) => turnId === 'turn-1' && seq === 2
       ? { inputText: '{"path":"a.ts"}', outputText: 'ok', inputTruncated: false, outputTruncated: false } : null),
@@ -303,7 +304,10 @@ describe('launcher-only native agent HTTP transport', () => {
     expect((await fetch(`${baseUrl}/agent/chat/providers`)).status).toBe(401);
     const listed = await fetch(`${baseUrl}/agent/chat/providers`, { headers: { 'x-agent-core-ui-token': 'fixture-ui-token' } });
     expect(listed.status).toBe(200);
-    expect(await listed.json()).toEqual({ providers: [{ id: 'atria', model: 'Atria-Dawn', configured: true, available: true }] });
+    expect(await listed.json()).toEqual({
+      providers: [{ id: 'atria', model: 'Atria-Dawn', configured: true, available: true }],
+      verifiedModels: [{ providerId: 'atria', model: 'Atria-Dawn', successfulTurns: 3, lastSuccessAtMs: 9 }],
+    });
     expect(agentChat.refreshProviderCapabilities).toHaveBeenCalledTimes(1);
 
     const turn = (providerId: unknown) => fetch(`${baseUrl}/agent/chat/conversations/conversation-1/turns`, {

@@ -499,6 +499,9 @@ export class AgentChatService {
   /** The owner's last provider/model/effort, persisted in chat.sqlite so it survives Core restarts. */
   getLastSelection() { return this.store.getLastSelection(); }
 
+  /** The models the Router page registers: proven by a finished turn. Never keys or URLs. */
+  listVerifiedModels() { return this.store.listVerifiedModels(); }
+
   /**
    * Records an owner pick (before any send) so a restart keeps it. Rejects what a send would reject,
    * but keeps an effort the model does not support: the saved choice is never rewritten to the effective one.

@@ -537,3 +537,14 @@
 .inspector-file-list li{display:flex;justify-content:space-between;gap:8px;font-size:9px;border:1px solid var(--border);border-radius:4px;background:#0d1420;margin-top:4px;padding:6px 8px}
 .inspector-file-list b{color:#d8e4f3;overflow-wrap:anywhere}
 .inspector-file-list small{color:#8d9db3;white-space:nowrap}
+
+.router-state{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.router-state p{margin:0;min-width:0;flex:1 1 280px}
+.router-models-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.router-models-heading h2{margin:0}
+.router-models-heading span{font-size:11px;color:var(--muted)}
+.router-rule{margin:4px 0 12px;color:var(--muted)}
+.router-table-wrap{overflow-x:auto}
+.router-table-wrap td{white-space:nowrap}
+.router-model{font-weight:600}
+.router-number{text-align:right;font-variant-numeric:tabular-nums}

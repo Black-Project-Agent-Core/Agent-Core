@@ -34,7 +34,7 @@ it('navigates the grouped launcher and keeps the original icon and real new-chat
   render(<AppShell page="chat" setPage={props.setPage} onAction={props.onAction} onNewChat={onNewChat}><h1>Workspace fixture</h1></AppShell>);
   expect(screen.getByRole('img', { name: 'Agent Core' })).toHaveAttribute('src', './agent-core.png');
   const nav = screen.getByRole('navigation', { name: 'Agent Core pages' });
-  for (const name of ['Goals & Plans', 'Artifacts', 'Tools Hub & MCP', 'Skill', 'AI Models', 'Memory Explorer', 'Dreaming Review']) {
+  for (const name of ['Goals & Plans', 'Artifacts', 'Tools Hub & MCP', 'Skill', 'AI Models', 'Router', 'Memory Explorer', 'Dreaming Review']) {
     expect(within(nav).getByRole('button', { name })).toBeEnabled();
   }
   fireEvent.click(within(nav).getByRole('button', { name: 'AI Models' }));
